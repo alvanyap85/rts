@@ -1,0 +1,2112 @@
+<title>冷锋 Cold Front</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="color-scheme" content="only dark">
+<meta name="darkreader-lock">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap">
+<style>
+/* Layout: landscape battlefield canvas filling the screen, gunmetal command sidebar on the right
+   (credits, power, radar, build grid), floating command buttons over the map. Single dark look by choice. */
+:root {
+  --bg: #0b0f12;
+  --panel: #161d23;
+  --panel2: #1f2931;
+  --line: #34424e;
+  --fg: #e4ecf1;
+  --muted: #8797a4;
+  --amber: #ffb43a;
+  --ok: #5fd27c;
+  --bad: #ff5b4b;
+  --team: #3d9bff;
+  --font: 'Chakra Petch', system-ui, 'PingFang SC', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
+  color-scheme: only dark;
+}
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font); overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; touch-action: none;
+}
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button { font-family: var(--font); cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+#app { position: fixed; inset: 0; display: flex; background: var(--bg); }
+#map { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+#cv { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+
+#side {
+  width: calc(clamp(148px, 20vw, 216px) + env(safe-area-inset-right, 0px));
+  padding: 6px max(6px, env(safe-area-inset-right, 0px)) 6px 6px;
+  background: linear-gradient(180deg, #1a232a 0%, #10161b 100%);
+  border-left: 1px solid var(--line);
+  display: flex; flex-direction: column; gap: 5px; min-height: 0;
+}
+.cred { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+#cred { font-size: 19px; font-weight: 700; color: var(--amber); font-variant-numeric: tabular-nums; letter-spacing: .03em; text-shadow: 0 0 8px rgba(255,180,58,.35); }
+#clock { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pwr { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); letter-spacing: .06em; }
+.pwr .bar { position: relative; flex: 1; height: 6px; background: #05080a; border: 1px solid var(--line); }
+.pwr .bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--ok); }
+.pwr .bar b { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--fg); }
+.pwr.low .bar i { background: var(--bad); }
+.pwr.low span { color: var(--bad); }
+#mini { width: 100%; aspect-ratio: 2 / 1; display: block; background: #000; border: 1px solid var(--line); image-rendering: pixelated; touch-action: none; }
+.tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.tabs button {
+  height: 26px; border: 1px solid var(--line); background: var(--panel); color: var(--muted);
+  font-size: 12px; font-weight: 600; letter-spacing: .08em; border-radius: 2px; position: relative;
+}
+.tabs button[aria-selected="true"] { background: var(--panel2); color: var(--amber); border-color: #5b4a2a; }
+.tabs button.ping::after { content: ''; position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--amber); }
+#grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 4px; align-content: start; }
+.bb {
+  position: relative; aspect-ratio: 4 / 3; padding: 0; overflow: hidden; border-radius: 2px;
+  border: 1px solid var(--line); background: #0c1216; color: var(--fg); touch-action: manipulation;
+}
+.bb canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.bb .ov { position: absolute; inset: 0; background: conic-gradient(transparent calc(var(--p, 0) * 1turn), rgba(0,0,0,.62) 0); }
+.bb .nm { position: absolute; left: 3px; bottom: 1px; font-size: 10px; font-weight: 600; text-shadow: 0 1px 2px #000, 0 0 3px #000; white-space: nowrap; }
+.bb .ct { position: absolute; right: 3px; top: 1px; font-size: 10px; font-weight: 600; color: var(--amber); text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+.bb .q { position: absolute; left: 3px; top: 2px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px; background: var(--amber); color: #1a1000; font-size: 11px; font-weight: 700; line-height: 16px; }
+.bb .st { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; letter-spacing: .1em; color: var(--amber); text-shadow: 0 0 6px #000, 0 1px 2px #000; }
+.bb.locked { filter: grayscale(1) brightness(.4); }
+.bb.busy { filter: brightness(.55); }
+.bb.ready { border-color: var(--amber); box-shadow: inset 0 0 0 1px var(--amber); }
+.bb.ready .st { animation: blink 0.9s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .35; } }
+
+.fbtns { position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); bottom: 8px; display: flex; gap: 6px; }
+.fb {
+  min-width: 54px; height: 38px; padding: 0 10px; border-radius: 3px; border: 1px solid var(--line);
+  background: rgba(16,22,27,.82); color: var(--fg); font-size: 13px; font-weight: 600; letter-spacing: .05em;
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); touch-action: manipulation;
+}
+.fb[aria-pressed="true"] { background: #3a2c10; border-color: var(--amber); color: var(--amber); }
+.fb.go { background: #173f22; border-color: var(--ok); color: #c9f5d5; }
+#menuBtn { position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); top: 8px; min-width: 38px; padding: 0; }
+#placeBar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 8px; }
+#selInfo { position: absolute; right: 8px; bottom: 8px; font-size: 12px; color: var(--muted); background: rgba(10,14,17,.7); padding: 3px 8px; border-radius: 2px; pointer-events: none; }
+#msgs { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
+#msgs div {
+  font-size: 13px; font-weight: 600; letter-spacing: .12em; color: var(--amber); background: rgba(8,10,12,.72);
+  border-left: 2px solid var(--amber); padding: 3px 12px; white-space: nowrap; animation: msgIn .2s ease-out;
+}
+#msgs div.bad { color: #ffb0a6; border-color: var(--bad); }
+@keyframes msgIn { from { opacity: 0; transform: translateY(-6px); } }
+
+.scr {
+  position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: safe center;
+  gap: 14px; padding-block: 20px; overflow-y: auto; text-align: center;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: radial-gradient(90% 70% at 50% 40%, rgba(40,52,62,.88) 0%, rgba(6,9,11,.96) 70%);
+}
+.scr h1 { margin: 0; font-size: clamp(44px, 9vw, 84px); line-height: .95; font-weight: 700; letter-spacing: .12em; color: var(--amber); text-shadow: 0 0 22px rgba(255,180,58,.35), 0 3px 0 #5a3c08; }
+.scr h1 small { display: block; font-size: .28em; letter-spacing: .6em; color: var(--fg); text-shadow: none; margin-top: 8px; padding-left: .6em; }
+.scr h2 { margin: 0; font-size: clamp(32px, 6vw, 54px); letter-spacing: .2em; padding-left: .2em; }
+.scr h2.win { color: var(--ok); }
+.scr h2.lose { color: var(--bad); }
+.scr p { margin: 0; color: var(--muted); font-size: 14px; max-width: 46ch; line-height: 1.5; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.big {
+  min-width: 150px; height: 46px; padding: 0 22px; border-radius: 3px; border: 1px solid #a8741d;
+  background: linear-gradient(180deg, #ffc659 0%, #f09a1c 100%); color: #2a1700; font-size: 17px; font-weight: 700; letter-spacing: .14em;
+  box-shadow: 0 3px 0 #7a4c08;
+}
+.big.alt { background: var(--panel2); color: var(--fg); border-color: var(--line); box-shadow: 0 3px 0 #05080a; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
+.seg button { height: 34px; min-width: 72px; border: 0; background: var(--panel); color: var(--muted); font-size: 13px; font-weight: 600; letter-spacing: .08em; }
+.seg button[aria-pressed="true"] { background: var(--panel2); color: var(--amber); }
+.help { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 6px 18px; max-width: 640px; width: 100%; text-align: left; font-size: 12px; color: var(--muted); }
+.help b { color: var(--fg); font-weight: 600; }
+.stats { display: grid; grid-template-columns: auto auto; gap: 4px 24px; font-size: 14px; text-align: left; font-variant-numeric: tabular-nums; }
+.stats span { color: var(--muted); }
+#rotate { position: fixed; inset: 0; z-index: 40; display: none; place-items: center; text-align: center; background: var(--bg); color: var(--fg); font-size: 18px; letter-spacing: .1em; }
+@media (orientation: portrait) and (max-width: 700px) { #rotate { display: grid; } }
+@media (prefers-reduced-motion: reduce) { .bb.ready .st, #msgs div { animation: none; } }
+</style>
+
+<div id="app">
+  <div id="map">
+    <canvas id="cv"></canvas>
+    <div id="msgs" aria-live="polite"></div>
+    <button class="fb" id="menuBtn" aria-label="暂停">II</button>
+    <div class="fbtns">
+      <button class="fb" id="boxBtn" aria-pressed="false">框选</button>
+      <button class="fb" id="allBtn">全军</button>
+      <button class="fb go" id="deployBtn" hidden>展开</button>
+      <button class="fb" id="desBtn" hidden>取消</button>
+    </div>
+    <div id="placeBar" hidden>
+      <button class="fb go" id="placeOk">放置</button>
+      <button class="fb" id="placeNo">取消</button>
+    </div>
+    <div id="selInfo" hidden></div>
+  </div>
+  <aside id="side">
+    <div class="cred"><div id="cred">$0</div><div id="clock">00:00</div></div>
+    <div class="pwr" id="pwr"><span>电力</span><div class="bar"><i></i><b></b></div><span id="pwrTxt">0</span></div>
+    <canvas id="mini" width="240" height="120"></canvas>
+    <div class="tabs" role="tablist">
+      <button id="tabB" role="tab" aria-selected="true">建筑</button>
+      <button id="tabU" role="tab" aria-selected="false">部队</button>
+    </div>
+    <div id="grid"></div>
+  </aside>
+</div>
+
+<div class="scr" id="title">
+  <h1>冷锋<small>COLD FRONT</small></h1>
+  <p>采矿、建基地、爆兵，推平对面的基地。一局大约十分钟。</p>
+  <div class="seg" id="diff">
+    <button data-d="0" aria-pressed="false">简单</button>
+    <button data-d="1" aria-pressed="true">普通</button>
+    <button data-d="2" aria-pressed="false">困难</button>
+  </div>
+  <div class="row"><button class="big" id="startBtn">开始作战</button></div>
+  <div class="help">
+    <div><b>选部队：</b>点一下单位；双击选同类；拖动框选（手机先开「框选」）</div>
+    <div><b>下命令：</b>选中后点地面移动，点敌人攻击，点矿区采矿</div>
+    <div><b>看地图：</b>单指拖动平移，双指缩放，点右侧小地图跳转</div>
+    <div><b>造东西：</b>点右侧图标开始建造，建筑完成后再点一下放到地图上；长按图标取消</div>
+  </div>
+</div>
+
+<div class="scr" id="pause" hidden>
+  <h2>暂停</h2>
+  <div class="row">
+    <button class="big" id="resumeBtn">继续</button>
+    <button class="big alt" id="restartBtn">重新开始</button>
+    <button class="big alt" id="quitBtn">返回标题</button>
+  </div>
+</div>
+
+<div class="scr" id="end" hidden>
+  <h2 id="endTitle">胜利</h2>
+  <div class="stats" id="endStats"></div>
+  <div class="row">
+    <button class="big" id="againBtn">再来一局</button>
+    <button class="big alt" id="endQuitBtn">返回标题</button>
+  </div>
+</div>
+
+<div id="rotate">请把手机横过来</div>
+
+<script>
+(() => {
+'use strict';
+
+// ============================================================ constants & definitions
+const T = 32, MW = 72, MH = 48, N = MW * MH;
+const DT = 1 / 30;
+const TEAM = [
+  { main: '#3d9bff', dark: '#1b4f8e', light: '#a6d4ff', mini: '#4fb0ff' },
+  { main: '#e4463a', dark: '#7d1d16', light: '#ffab9f', mini: '#ff5544' },
+];
+const ARM = { inf: 0, heavy: 1, bld: 2 };
+
+const BDEF = {
+  hq:       { name: '建造厂',   w: 3, h: 3, hp: 2400, power: 20,  cost: 0,    time: 0,  sight: 8, H: 26 },
+  power:    { name: '发电厂',   w: 2, h: 2, hp: 750,  power: 100, cost: 300,  time: 7,  sight: 4, H: 32 },
+  refinery: { name: '精炼厂',   w: 3, h: 2, hp: 1100, power: -30, cost: 1500, time: 13, sight: 5, H: 26, req: ['power'] },
+  barracks: { name: '兵营',     w: 2, h: 2, hp: 850,  power: -20, cost: 400,  time: 8,  sight: 5, H: 19, req: ['power'] },
+  factory:  { name: '战车工厂', w: 3, h: 3, hp: 1500, power: -30, cost: 1500, time: 15, sight: 5, H: 27, req: ['refinery'] },
+  turret:   { name: '哨戒炮',   w: 1, h: 1, hp: 800,  power: -20, cost: 600,  time: 9,  sight: 8, H: 15, req: ['barracks'], weapon: 'turretgun', range: 7.5 },
+};
+const UDEF = {
+  rifle:  { name: '步枪兵',   cat: 'inf', from: 'barracks', cost: 100,  time: 3.5, hp: 125, armor: 'inf',   speed: 34, r: 5,  range: 4.5, sight: 6, weapon: 'rifle' },
+  rocket: { name: '火箭兵',   cat: 'inf', from: 'barracks', cost: 250,  time: 6,   hp: 110, armor: 'inf',   speed: 30, r: 5,  range: 6,   sight: 7, weapon: 'rocket' },
+  tank:   { name: '主战坦克', cat: 'veh', from: 'factory',  cost: 800,  time: 11,  hp: 480, armor: 'heavy', speed: 52, r: 11, range: 5.5, sight: 7, weapon: 'cannon', turn: 3.2 },
+  mcv:    { name: '基地车',   cat: 'veh', from: 'factory',  cost: 3000, time: 25,  hp: 1000, armor: 'heavy', speed: 30, r: 15, range: 0, sight: 6, turn: 2 },
+  harv:   { name: '采矿车',   cat: 'veh', from: 'factory',  cost: 1200, time: 12,  hp: 900, armor: 'heavy', speed: 40, r: 13, range: 0,   sight: 5, turn: 2.6 },
+};
+// vs = damage multiplier against [infantry, heavy armor, buildings]
+const WDEF = {
+  rifle:     { dmg: 15, rof: 0.8, kind: 'bullet', vs: [1, 0.22, 0.3], snd: 'rifle' },
+  rocket:    { dmg: 52, rof: 2.2, kind: 'rocket', speed: 230, vs: [0.3, 1.1, 0.8], snd: 'rocket', splash: 10 },
+  cannon:    { dmg: 64, rof: 2.0, kind: 'shell', speed: 420, vs: [0.55, 1, 0.85], snd: 'cannon', splash: 14 },
+  turretgun: { dmg: 56, rof: 1.5, kind: 'shell', speed: 480, vs: [0.8, 1, 0.5], snd: 'cannon', splash: 12 },
+};
+const BUILD_LIST = ['power', 'refinery', 'barracks', 'factory', 'turret'];
+const UNIT_LIST = ['rifle', 'rocket', 'tank', 'harv', 'mcv'];
+const HARV_CAP = 800;
+const DIFF = [
+  { name: '简单', firstAttack: 300, wave: 4, waveGrow: 1, waveMax: 10, gap: 110, prod: 0.75, startCredits: 5000 },
+  { name: '普通', firstAttack: 210, wave: 6, waveGrow: 2, waveMax: 16, gap: 80,  prod: 1,    startCredits: 5000 },
+  { name: '困难', firstAttack: 150, wave: 7, waveGrow: 3, waveMax: 24, gap: 60,  prod: 1.3,  startCredits: 7000 },
+];
+
+// ============================================================ helpers
+function mulberry(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+let rnd = Math.random;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp = (a, b, t) => a + (b - a) * t;
+const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+const turnTo = (a, b, max) => { const d = angDiff(a, b); return Math.abs(d) <= max ? b : a + Math.sign(d) * max; };
+const tIdx = (x, y) => (y | 0) * MW + (x | 0);
+const tileOf = (px, py) => clamp(Math.floor(py / T), 0, MH - 1) * MW + clamp(Math.floor(px / T), 0, MW - 1);
+function hash2(x, y) { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177 | 0; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
+function vnoise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi;
+  const s = t => t * t * (3 - 2 * t);
+  const a = hash2(xi, yi), b = hash2(xi + 1, yi), c = hash2(xi, yi + 1), d = hash2(xi + 1, yi + 1);
+  return lerp(lerp(a, b, s(xf)), lerp(c, d, s(xf)), s(yf));
+}
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+  if (f >= 0) { r += (255 - r) * f; g += (255 - g) * f; b += (255 - b) * f; } else { r *= 1 + f; g *= 1 + f; b *= 1 + f; }
+  return `rgb(${r | 0},${g | 0},${b | 0})`;
+}
+
+// ============================================================ map
+let terr, ore, oreMax, bmap;
+const isWalk = i => terr[i] === 0 && bmap[i] < 0;
+const START = [{ tx: 7, ty: 36 }, { tx: MW - 10, ty: MH - 39 }]; // HQ top-left tiles (point-symmetric)
+
+function genMap() {
+  terr = new Uint8Array(N); ore = new Uint16Array(N); oreMax = new Uint16Array(N); bmap = new Int32Array(N).fill(-1);
+  // river along the diagonal, point-symmetric about the centre, with three fords
+  const L = Math.hypot(MW, MH), nx = -MH / L, ny = MW / L, pts = [];
+  for (let k = 0; k <= 160; k++) {
+    const s = k / 160, o = Math.sin(s * Math.PI * 2) * 4.5 + Math.sin(s * Math.PI * 4) * 1.6;
+    pts.push([s * MW + nx * o, s * MH + ny * o, s]);
+  }
+  const ford = s => Math.abs(s - 0.5) < 0.035 || Math.abs(s - 0.21) < 0.026 || Math.abs(s - 0.79) < 0.026;
+  const riverD = new Float32Array(N);
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    let best = 1e9, bs = 0;
+    for (const p of pts) { const d = (p[0] - x - .5) ** 2 + (p[1] - y - .5) ** 2; if (d < best) { best = d; bs = p[2]; } }
+    best = Math.sqrt(best); riverD[y * MW + x] = best;
+    if (best < 1.7 && !ford(bs)) terr[y * MW + x] = 2;
+  }
+  const baseC = START.map(s => [s.tx + 1.5, s.ty + 1.5]);
+  const nearBase = (x, y, r) => baseC.some(b => Math.hypot(b[0] - x, b[1] - y) < r);
+  const blob = (cx, cy, r, f) => {
+    for (let y = Math.floor(cy - r - 1); y <= cy + r + 1; y++) for (let x = Math.floor(cx - r - 1); x <= cx + r + 1; x++) {
+      if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
+      f(x, y, Math.hypot(x + .5 - cx, y + .5 - cy) / r);
+    }
+  };
+  // ore fields: one close to each base, one further back, a rich one toward the middle
+  const fields = [[17.5, 40.5, 3.4, 1], [6.5, 26.5, 3, 1], [27, 34.5, 3.6, 1.5], [44, 43.5, 2.8, 1.1], [3.5, 14, 2.6, 1.2]];
+  for (const [fx, fy, r, rich] of fields) for (const [cx, cy] of [[fx, fy], [MW - fx, MH - fy]]) {
+    blob(cx, cy, r, (x, y, d) => {
+      const i = y * MW + x; const j = (MH - 1 - y) * MW + (MW - 1 - x);
+      if (d > 1 - hash2(x * 3, y * 7) * 0.25 || terr[i] || terr[j]) return;
+      const a = Math.round((260 + 340 * (1 - d) * rich + hash2(x, y) * 80) / 10) * 10;
+      ore[i] = Math.max(ore[i], a); oreMax[i] = ore[i];
+    });
+  }
+  // rocks, placed in mirrored pairs away from bases, ore and the river
+  let placed = 0, tries = 0;
+  while (placed < 11 && tries++ < 400) {
+    const x = 3 + rnd() * (MW - 6), y = 3 + rnd() * (MH - 6), r = 1.1 + rnd() * 1.6;
+    if (nearBase(x, y, 11) || nearBase(MW - x, MH - y, 11)) continue;
+    const ti = tIdx(x, y); if (riverD[ti] < 4 || Math.abs(x / MW - y / MH) < 0.05) continue;
+    let clash = false; blob(x, y, r + 1.5, (xx, yy) => { if (ore[yy * MW + xx]) clash = true; }); if (clash) continue;
+    for (const [cx, cy] of [[x, y], [MW - x, MH - y]]) blob(cx, cy, r, (xx, yy, d) => { if (d < 1 - hash2(xx, yy * 3) * 0.35) terr[yy * MW + xx] = 1; });
+    placed++;
+  }
+  // map edges: a thin ring of rock keeps units off the very border
+  for (let x = 0; x < MW; x++) { terr[x] = terr[x] || 1; terr[(MH - 1) * MW + x] = terr[(MH - 1) * MW + x] || 1; }
+  for (let y = 0; y < MH; y++) { terr[y * MW] = terr[y * MW] || 1; terr[y * MW + MW - 1] = terr[y * MW + MW - 1] || 1; }
+  for (let i = 0; i < N; i++) if (terr[i]) { ore[i] = 0; oreMax[i] = 0; }
+  renderTerrain(riverD);
+}
+
+let terrC, miniBase, props = [];
+function renderTerrain(riverD) {
+  terrC = document.createElement('canvas'); terrC.width = MW * T; terrC.height = MH * T;
+  const c = terrC.getContext('2d');
+  const baseC = START.map(s => [s.tx + 1.5, s.ty + 1.5]);
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const i = y * MW + x, n = vnoise(x / 6, y / 6) * 0.6 + vnoise(x / 2.2, y / 2.2) * 0.4;
+    const db = Math.min(...baseC.map(b => Math.hypot(b[0] - x, b[1] - y)));
+    let h = 82 - n * 18, s = 24 + n * 8, l = 27 + n * 9;
+    const dirt = clamp(1 - (db - 3) / 7, 0, 1) * 0.85 + clamp(vnoise(x / 4 + 9, y / 4) - 0.62, 0, 1) * 1.6;
+    h = lerp(h, 38, dirt); s = lerp(s, 22, dirt); l = lerp(l, 33, dirt);
+    if (riverD[i] < 2.6 && !terr[i]) { h = lerp(h, 45, 0.6); l += 4; } // sandy banks
+    c.fillStyle = `hsl(${h},${s}%,${l}%)`; c.fillRect(x * T, y * T, T, T);
+    for (let k = 0; k < 7; k++) {
+      const r = hash2(x * 13 + k, y * 17 - k);
+      c.fillStyle = r > .5 ? `hsla(${h},${s}%,${l + 7}%,.55)` : `hsla(${h},${s + 6}%,${l - 7}%,.55)`;
+      c.fillRect(x * T + hash2(x + k * 5, y) * 30, y * T + hash2(x, y + k * 5) * 30, 2, 2);
+    }
+  }
+  // water
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const i = y * MW + x; if (terr[i] !== 2) continue;
+    const g = c.createLinearGradient(x * T, y * T, x * T + T, y * T + T);
+    const deep = clamp((1.7 - riverD[i]) / 1.7, 0, 1);
+    g.addColorStop(0, `hsl(196,45%,${30 - deep * 10}%)`); g.addColorStop(1, `hsl(200,48%,${26 - deep * 9}%)`);
+    c.fillStyle = g; c.fillRect(x * T, y * T, T, T);
+    c.strokeStyle = 'rgba(190,230,255,.13)'; c.lineWidth = 1.2;
+    for (let k = 0; k < 2; k++) { const yy = y * T + 8 + k * 14 + hash2(x, y + k) * 6; c.beginPath(); c.moveTo(x * T + 3, yy); c.quadraticCurveTo(x * T + 16, yy - 3, x * T + 29, yy); c.stroke(); }
+  }
+  // shoreline foam
+  c.strokeStyle = 'rgba(225,235,210,.5)'; c.lineWidth = 2;
+  for (let y = 1; y < MH - 1; y++) for (let x = 1; x < MW - 1; x++) {
+    if (terr[y * MW + x] !== 2) continue;
+    const e = (dx, dy) => terr[(y + dy) * MW + x + dx] !== 2;
+    c.beginPath();
+    if (e(0, -1)) { c.moveTo(x * T, y * T + 1); c.lineTo(x * T + T, y * T + 1); }
+    if (e(0, 1)) { c.moveTo(x * T, y * T + T - 1); c.lineTo(x * T + T, y * T + T - 1); }
+    if (e(-1, 0)) { c.moveTo(x * T + 1, y * T); c.lineTo(x * T + 1, y * T + T); }
+    if (e(1, 0)) { c.moveTo(x * T + T - 1, y * T); c.lineTo(x * T + T - 1, y * T + T); }
+    c.stroke();
+  }
+  // rock/forest tiles: darker ground under the props
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (terr[y * MW + x] === 1) { c.fillStyle = 'rgba(40,34,24,.35)'; c.fillRect(x * T, y * T, T, T); }
+  props = [];
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+    const i = y * MW + x;
+    if (terr[i] === 1) {
+      const edge = x === 0 || y === 0 || x === MW - 1 || y === MH - 1;
+      const k = edge || vnoise(x / 5 + 30, y / 5) > 0.42 ? 'tree' : 'rock';
+      const n = k === 'tree' ? 2 : 1;
+      for (let m = 0; m < n; m++) props.push({ k, x: x * T + 6 + hash2(x * 7 + m, y) * 20, y: y * T + 6 + hash2(x, y * 7 + m) * 20, s: (k === 'tree' ? 0.85 : 0.9) + hash2(x + m, y - m) * 0.4, h: hash2(x * 3 + m, y * 5) });
+    } else if (!terr[i] && !ore[i] && hash2(x * 5, y * 9) < 0.06 && Math.min(...baseC.map(b => Math.hypot(b[0] - x, b[1] - y))) > 6) {
+      props.push({ k: 'bush', x: x * T + 16, y: y * T + 16, s: 0.8 + hash2(x, y) * 0.5, h: 0 });
+    }
+  }
+  // minimap base image (1 px per tile)
+  miniBase = document.createElement('canvas'); miniBase.width = MW; miniBase.height = MH;
+  const m = miniBase.getContext('2d'), id = m.createImageData(MW, MH);
+  for (let i = 0; i < N; i++) {
+    const col = terr[i] === 2 ? [38, 82, 100] : terr[i] === 1 ? [92, 88, 82] : [70, 86, 52];
+    id.data.set([...col, 255], i * 4);
+  }
+  m.putImageData(id, 0, 0);
+}
+
+// ============================================================ flow fields (pathing)
+const fieldCache = new Map(); let fieldVer = 0;
+const heapI = new Int32Array(N * 8), heapC = new Float32Array(N * 8);
+const DIRS = [[1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1], [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]];
+function computeField(seeds) {
+  const d = new Float32Array(N).fill(Infinity);
+  let n = 0;
+  const push = (i, c) => { let k = n++; while (k > 0) { const p = (k - 1) >> 1; if (heapC[p] <= c) break; heapI[k] = heapI[p]; heapC[k] = heapC[p]; k = p; } heapI[k] = i; heapC[k] = c; };
+  const pop = () => {
+    const ri = heapI[0], rc = heapC[0]; n--; const li = heapI[n], lc = heapC[n]; let k = 0;
+    while (true) { let c = 2 * k + 1; if (c >= n) break; if (c + 1 < n && heapC[c + 1] < heapC[c]) c++; if (heapC[c] >= lc) break; heapI[k] = heapI[c]; heapC[k] = heapC[c]; k = c; }
+    heapI[k] = li; heapC[k] = lc; popC = rc; return ri;
+  };
+  let popC = 0;
+  for (const s of seeds) { d[s] = 0; push(s, 0); }
+  while (n > 0) {
+    const i = pop(), c = popC; if (c > d[i]) continue;
+    const x = i % MW, y = (i / MW) | 0;
+    for (const [dx, dy, w] of DIRS) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= MW || yy >= MH) continue;
+      const j = yy * MW + xx; if (!isWalk(j)) continue;
+      if (dx && dy && (!isWalk(y * MW + xx) || !isWalk(yy * MW + x))) continue;
+      const nc = c + w; if (nc < d[j]) { d[j] = nc; push(j, nc); }
+    }
+  }
+  return d;
+}
+function getField(key, seedsFn) {
+  let f = fieldCache.get(key);
+  if (f && f.ver === fieldVer) { f.used = G.t; return f.d; }
+  f = { d: computeField(seedsFn()), ver: fieldVer, used: G.t };
+  fieldCache.set(key, f);
+  if (fieldCache.size > 80) {
+    let oldK = null, oldT = 1e9; for (const [k, v] of fieldCache) if (v.used < oldT) { oldT = v.used; oldK = k; }
+    fieldCache.delete(oldK);
+  }
+  return f.d;
+}
+const tileField = ti => getField('t' + ti, () => [ti]);
+const bldField = b => getField('b' + b.id, () => b.tiles);
+function nearestWalk(ti, maxR = 12) {
+  if (isWalk(ti)) return ti;
+  const x0 = ti % MW, y0 = (ti / MW) | 0;
+  for (let r = 1; r <= maxR; r++) {
+    let best = -1, bd = 1e9;
+    for (let y = y0 - r; y <= y0 + r; y++) for (let x = x0 - r; x <= x0 + r; x++) {
+      if (Math.max(Math.abs(x - x0), Math.abs(y - y0)) !== r || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+      const j = y * MW + x; if (!isWalk(j)) continue;
+      const d = (x - x0) ** 2 + (y - y0) ** 2; if (d < bd) { bd = d; best = j; }
+    }
+    if (best >= 0) return best;
+  }
+  return ti;
+}
+function clearLine(x0, y0, x1, y1) {
+  const d = Math.hypot(x1 - x0, y1 - y0), n = Math.ceil(d / 10);
+  for (let k = 1; k <= n; k++) { const t = k / n; if (!isWalk(tileOf(lerp(x0, x1, t), lerp(y0, y1, t)))) return false; }
+  return true;
+}
+
+// ============================================================ game state
+let G = null, sel = new Set(), selB = null, placing = null, paused = true, difficulty = 1, autoPlayer = false;
+const view = { w: 800, h: 450, dpr: 1 };
+const cam = { x: 0, y: 0, z: 1 };
+
+function mkTeam(i, ai) {
+  return {
+    i, ai, credits: DIFF[difficulty].startCredits, powerP: 0, powerU: 0, cnt: {},
+    bq: null, q: { inf: [], veh: [] }, qp: { inf: null, veh: null },
+    rally: { inf: null, veh: null }, low: false, lostB: 0, lostU: 0, kills: 0, mined: 0,
+    ai_: { next: 0, wave: DIFF[difficulty].wave, nextAttack: DIFF[difficulty].firstAttack, waveIds: new Set(), step: 0 },
+    lastWarn: -99, lastFunds: -99,
+  };
+}
+
+function newGame(seed) {
+  seed = seed ?? (Math.random() * 1e9 | 0);
+  rnd = mulberry(seed);
+  fieldCache.clear(); fieldVer++;
+  G = { t: 0, seed, ents: [], byId: new Map(), nextId: 1, fx: [], proj: [], decals: [], over: null, msgT: 0, visT: 0, aiT: 0, endT: 0, oreT: 0, reveal: autoPlayer, demo: false };
+  timers.length = 0;
+  G.teams = [mkTeam(0, autoPlayer), mkTeam(1, true)];
+  genMap();
+  vis = new Uint8Array(N); expl = new Uint8Array(N);
+  for (const tm of G.teams) {
+    const s = START[tm.i];
+    addUnit(tm.i, 'mcv', (s.tx + 1.5) * T, (s.ty + 1.5) * T);
+    const dir = tm.i === 0 ? -1 : 1;
+    const bx = (s.tx + 1.5) * T, by = (s.ty + 1.5) * T;
+    const spots = [[3.2, 0.2], [3.0, -1.2], [3.4, 1.4], [0.5, 3.4]];
+    addUnit(tm.i, 'tank', bx - dir * spots[0][0] * T, by + dir * spots[0][1] * T);
+    for (let k = 1; k < 4; k++) addUnit(tm.i, 'rifle', bx - dir * spots[k][0] * T, by + dir * spots[k][1] * T);
+  }
+  recount();
+  sel.clear(); selB = null; placing = null; boxMode = false; updateBoxBtn();
+  const mcv = G.ents.find(e => e.team === 0 && e.type === 'mcv');
+  resize();
+  cam.z = defaultZoom();
+  centerOn(mcv.x + T, mcv.y);
+  updateVis(true);
+  buildGrid();
+  msgBox.textContent = '';
+  if (!G.teams[0].ai) { selectOnly([mcv]); say('选中基地车，点「展开」建立基地'); }
+}
+
+// ============================================================ entities
+function addBuilding(team, type, tx, ty) {
+  const d = BDEF[type];
+  const b = {
+    id: G.nextId++, kind: 'b', team, type, tx, ty, w: d.w, h: d.h, hp: d.hp, maxhp: d.hp,
+    x: (tx + d.w / 2) * T, y: (ty + d.h / 2) * T, bu: 0, cool: 0, tdir: team === 0 ? -0.8 : 2.3, target: null, scanT: 0,
+    tiles: [], dmgT: 0, smokeT: 0,
+  };
+  for (let y = ty; y < ty + d.h; y++) for (let x = tx; x < tx + d.w; x++) { const i = y * MW + x; bmap[i] = b.id; b.tiles.push(i); ore[i] = 0; }
+  G.ents.push(b); G.byId.set(b.id, b);
+  fieldVer++;
+  return b;
+}
+function addUnit(team, type, x, y) {
+  const d = UDEF[type];
+  const u = {
+    id: G.nextId++, kind: 'u', team, type, x, y, hp: d.hp, maxhp: d.hp, r: d.r,
+    dir: team === 0 ? -0.8 : 2.3, tdir: team === 0 ? -0.8 : 2.3, order: { type: 'idle' }, target: null, cool: rnd() * 0.5,
+    scanT: rnd() * 0.3, walk: 0, lastX: x, lastY: y, stuckT: 0, fireT: 0, carry: 0, hs: null, home: null,
+  };
+  G.ents.push(u); G.byId.set(u.id, u);
+  return u;
+}
+function recount() {
+  for (const tm of G.teams) { tm.cnt = {}; tm.powerP = 0; tm.powerU = 0; }
+  for (const e of G.ents) {
+    const tm = G.teams[e.team];
+    tm.cnt[e.type] = (tm.cnt[e.type] || 0) + 1;
+    if (e.kind === 'b') { const p = BDEF[e.type].power; if (p > 0) tm.powerP += p; else tm.powerU -= p; }
+  }
+  for (const tm of G.teams) {
+    const low = tm.powerU > tm.powerP;
+    if (low && !tm.low && !tm.ai && G.t > 1) say('电力不足', true);
+    tm.low = low;
+  }
+}
+const bldRectDist = (b, x, y) => {
+  const x0 = b.tx * T, y0 = b.ty * T, x1 = x0 + b.w * T, y1 = y0 + b.h * T;
+  const dx = Math.max(x0 - x, 0, x - x1), dy = Math.max(y0 - y, 0, y - y1);
+  return Math.hypot(dx, dy);
+};
+const distTo = (a, e) => e.kind === 'b' ? bldRectDist(e, a.x, a.y) : Math.max(0, Math.hypot(e.x - a.x, e.y - a.y) - e.r * 0.5);
+const alive = e => e && e.hp > 0 && G.byId.has(e.id);
+
+// ============================================================ spatial hash
+const CS = 64, CW = Math.ceil(MW * T / CS), CH = Math.ceil(MH * T / CS);
+let cells = [];
+function rebuildHash() {
+  cells = Array.from({ length: CW * CH }, () => []);
+  for (const e of G.ents) {
+    if (e.kind === 'u') cells[clamp(e.y / CS | 0, 0, CH - 1) * CW + clamp(e.x / CS | 0, 0, CW - 1)].push(e);
+    else {
+      const x0 = clamp(e.tx * T / CS | 0, 0, CW - 1), x1 = clamp(((e.tx + e.w) * T - 1) / CS | 0, 0, CW - 1);
+      const y0 = clamp(e.ty * T / CS | 0, 0, CH - 1), y1 = clamp(((e.ty + e.h) * T - 1) / CS | 0, 0, CH - 1);
+      for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) cells[cy * CW + cx].push(e);
+    }
+  }
+}
+function query(x, y, r, fn) {
+  const x0 = clamp((x - r) / CS | 0, 0, CW - 1), x1 = clamp((x + r) / CS | 0, 0, CW - 1);
+  const y0 = clamp((y - r) / CS | 0, 0, CH - 1), y1 = clamp((y + r) / CS | 0, 0, CH - 1);
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) for (const e of cells[cy * CW + cx]) fn(e);
+}
+function findEnemy(e, r) {
+  let best = null, bd = 1e9; const seen = new Set();
+  query(e.x, e.y, r + 48, o => {
+    if (o.team === e.team || o.hp <= 0 || seen.has(o.id)) return; seen.add(o.id);
+    let d = distTo(e, o); if (d > r) return;
+    if (o.kind === 'b') d += 40;                  // prefer shooting units over buildings
+    if (o.type === 'harv') d += 20;
+    if (d < bd) { bd = d; best = o; }
+  });
+  return best;
+}
+
+// ============================================================ fog of war (player side)
+let vis, expl;
+function updateVis(force) {
+  vis.fill(0);
+  for (const e of G.ents) {
+    if (e.team !== 0) continue;
+    const s = e.kind === 'b' ? BDEF[e.type].sight : UDEF[e.type].sight;
+    const cx = e.x / T, cy = e.y / T;
+    for (let y = Math.max(0, Math.floor(cy - s)); y <= Math.min(MH - 1, cy + s); y++)
+      for (let x = Math.max(0, Math.floor(cx - s)); x <= Math.min(MW - 1, cx + s); x++)
+        if ((x + .5 - cx) ** 2 + (y + .5 - cy) ** 2 <= s * s) { vis[y * MW + x] = 1; expl[y * MW + x] = 1; }
+  }
+  if (G.reveal) { vis.fill(1); expl.fill(1); }
+  paintFog();
+}
+let fogC, fogX, fogImg;
+function paintFog() {
+  if (!fogC) { fogC = document.createElement('canvas'); fogC.width = MW; fogC.height = MH; fogX = fogC.getContext('2d'); fogImg = fogX.createImageData(MW, MH); }
+  const d = fogImg.data;
+  for (let i = 0; i < N; i++) { d[i * 4] = 4; d[i * 4 + 1] = 7; d[i * 4 + 2] = 9; d[i * 4 + 3] = !expl[i] ? 255 : vis[i] ? 0 : 120; }
+  fogX.putImageData(fogImg, 0, 0);
+}
+const seen = e => e.team === 0 || (e.kind === 'b' ? e.tiles.some(i => expl[i]) : vis[tileOf(e.x, e.y)]);
+
+// ============================================================ production
+function canBuild(tm, type) {
+  const d = BDEF[type] || UDEF[type];
+  if (BDEF[type] && !tm.cnt.hq) return false;
+  if (d.from && !tm.cnt[d.from]) return false;
+  return (d.req || []).every(r => tm.cnt[r] > 0);
+}
+function prodRate(tm) { return (tm.low ? 0.5 : 1) * (tm.ai ? DIFF[difficulty].prod : 1); }
+function advance(tm, item, def, dt) {
+  const rate = prodRate(tm) / def.time;
+  const want = Math.min(1 - item.prog, rate * dt);
+  const cost = def.cost * want;
+  if (cost > tm.credits) {
+    if (!tm.ai && G.t - tm.lastFunds > 12) { tm.lastFunds = G.t; say('资金不足', true); }
+    return false;
+  }
+  tm.credits -= cost; item.paid += cost; item.prog += want;
+  return item.prog >= 1 - 1e-6;
+}
+function startBuilding(tm, type) {
+  if (tm.bq || !canBuild(tm, type)) return false;
+  tm.bq = { type, prog: 0, paid: 0, ready: false };
+  return true;
+}
+function cancelBuilding(tm) { if (!tm.bq) return; tm.credits += tm.bq.paid; tm.bq = null; if (placing) endPlacing(); }
+function queueUnit(tm, type) {
+  const d = UDEF[type]; if (!canBuild(tm, type)) return false;
+  const q = tm.q[d.cat]; if (q.length >= 9) return false;
+  q.push(type); if (q.length === 1) tm.qp[d.cat] = { prog: 0, paid: 0 };
+  return true;
+}
+function cancelUnit(tm, type) {
+  const d = UDEF[type], q = tm.q[d.cat]; const k = q.lastIndexOf(type); if (k < 0) return false;
+  if (k === 0) { tm.credits += tm.qp[d.cat].paid; q.shift(); tm.qp[d.cat] = q.length ? { prog: 0, paid: 0 } : null; }
+  else q.splice(k, 1);
+  return true;
+}
+function stepProduction(tm, dt) {
+  if (tm.bq && !tm.bq.ready) {
+    if (!tm.cnt.hq) cancelBuilding(tm);
+    else if (advance(tm, tm.bq, BDEF[tm.bq.type], dt)) {
+      tm.bq.ready = true;
+      if (tm.i === 0) { say('建造完成'); sfx('ready'); if (curTab !== 'b') tabB.classList.add('ping'); }
+    }
+  }
+  for (const cat of ['inf', 'veh']) {
+    const q = tm.q[cat]; if (!q.length) continue;
+    const type = q[0], def = UDEF[type];
+    if (!tm.cnt[def.from]) continue;
+    if (advance(tm, tm.qp[cat], def, dt)) {
+      if (spawnUnit(tm, type)) { q.shift(); tm.qp[cat] = q.length ? { prog: 0, paid: 0 } : null; }
+      else tm.qp[cat].prog = 1;
+    }
+  }
+}
+function exitTile(b) {
+  const x = b.tx + Math.floor(b.w / 2), y = b.ty + b.h;
+  return nearestWalk(clamp(y, 0, MH - 1) * MW + x, 6);
+}
+function spawnUnit(tm, type, from) {
+  const d = UDEF[type];
+  const blds = G.ents.filter(e => e.kind === 'b' && e.team === tm.i && e.type === d.from);
+  const b = from || blds[blds.length - 1]; if (!b) return false;
+  const et = exitTile(b);
+  const ex = (et % MW + .5) * T, ey = ((et / MW | 0) + .5) * T;
+  const u = addUnit(tm.i, type, ex + (rnd() - .5) * 8, ey - 6);
+  u.dir = u.tdir = Math.PI / 2;
+  if (type === 'harv') { u.order = { type: 'harvest' }; u.hs = 'seek'; }
+  else {
+    const r = tm.rally[d.cat];
+    if (r) orderMove([u], r.x, r.y, tm.ai ? 'amove' : 'move');
+    else orderMove([u], ex + (rnd() - .5) * 40, ey + T * 1.6 + rnd() * 20, 'move');
+  }
+  if (tm.i === 0 && type !== 'harv') { if (G.t - (G.readyT || -9) > 2) say('部队就绪'); G.readyT = G.t; sfx('unit'); }
+  return true;
+}
+function canPlace(tm, type, tx, ty, pad = 0) {
+  const d = BDEF[type];
+  if (tx < 1 || ty < 1 || tx + d.w > MW - 1 || ty + d.h > MH - 1) return false;
+  for (let y = ty - pad; y < ty + d.h + pad; y++) for (let x = tx - pad; x < tx + d.w + pad; x++) {
+    if (x < 0 || y < 0 || x >= MW || y >= MH) continue;
+    const i = y * MW + x;
+    const inside = x >= tx && y >= ty && x < tx + d.w && y < ty + d.h;
+    if (bmap[i] >= 0) return false;
+    if (inside && (terr[i] || ore[i])) return false;
+  }
+  // keep the tile below the exit of producers clear of rock
+  for (const e of G.ents) {
+    if (e.kind !== 'u') continue;
+    if (e.x + e.r > tx * T && e.x - e.r < (tx + d.w) * T && e.y + e.r > ty * T && e.y - e.r < (ty + d.h) * T) return false;
+  }
+  let near = false;
+  for (const e of G.ents) {
+    if (e.kind !== 'b' || e.team !== tm.i) continue;
+    const gx = Math.max(0, e.tx - (tx + d.w), tx - (e.tx + e.w)), gy = Math.max(0, e.ty - (ty + d.h), ty - (e.ty + e.h));
+    if (Math.max(gx, gy) <= 4) { near = true; break; }
+  }
+  return near;
+}
+function placeBuilding(tm, tx, ty) {
+  const type = tm.bq.type; if (!canPlace(tm, type, tx, ty)) return false;
+  const b = addBuilding(tm.i, type, tx, ty);
+  tm.bq = null; recount();
+  if (type === 'refinery') {
+    const h = spawnUnit(tm, 'harv', b);
+  }
+  if (tm.i === 0) sfx('place');
+  return b;
+}
+
+// ============================================================ deploying the MCV
+function deploySpot(u) {
+  const tx = Math.floor(u.x / T) - 1, ty = Math.floor(u.y / T) - 1;
+  if (tx < 1 || ty < 1 || tx + 3 > MW - 1 || ty + 3 > MH - 1) return null;
+  for (let y = ty; y < ty + 3; y++) for (let x = tx; x < tx + 3; x++) { const i = y * MW + x; if (terr[i] || bmap[i] >= 0) return null; }
+  return [tx, ty];
+}
+function deploy(u) {
+  const s = deploySpot(u);
+  if (!s) { if (u.team === 0 && !G.teams[0].ai) { say('这里无法展开，换个空地', true); sfx('deny'); } return false; }
+  G.byId.delete(u.id); G.ents = G.ents.filter(e => e !== u); sel.delete(u);
+  addBuilding(u.team, 'hq', s[0], s[1]);
+  recount();
+  if (u.team === 0) { sfx('place'); if (!G.teams[0].ai) { say('基地车已展开'); refreshSelUI(); setTab('b'); } }
+  return true;
+}
+
+// ============================================================ orders
+function slots(n, spacing) {
+  const out = [[0, 0]]; let ring = 1;
+  while (out.length < n) {
+    const k = Math.round(ring * 6.3);
+    for (let i = 0; i < k && out.length < n; i++) { const a = i / k * Math.PI * 2 + ring; out.push([Math.cos(a) * ring * spacing, Math.sin(a) * ring * spacing]); }
+    ring++;
+  }
+  return out;
+}
+function orderMove(units, wx, wy, type = 'move') {
+  if (!units.length) return;
+  const dest = nearestWalk(tileOf(wx, wy));
+  const cx = (dest % MW + .5) * T, cy = ((dest / MW | 0) + .5) * T;
+  const fx0 = isWalk(tileOf(wx, wy)) ? wx : cx, fy0 = isWalk(tileOf(wx, wy)) ? wy : cy;
+  const sorted = [...units].sort((a, b) => Math.hypot(a.x - fx0, a.y - fy0) - Math.hypot(b.x - fx0, b.y - fy0));
+  const sp = slots(sorted.length, units.some(u => UDEF[u.type].cat === 'veh') ? 26 : 16);
+  sorted.forEach((u, k) => {
+    let fx = fx0 + sp[k][0], fy = fy0 + sp[k][1];
+    if (!isWalk(tileOf(fx, fy)) || !clearLine(fx0, fy0, fx, fy)) { fx = fx0; fy = fy0; }
+    u.order = { type, dest, fx, fy }; u.target = null; u.stuckT = 0;
+    if (u.type === 'harv') u.hs = null;
+  });
+}
+function orderAttack(units, target) {
+  for (const u of units) {
+    if (!UDEF[u.type].weapon) continue;
+    u.order = { type: 'attack', target }; u.target = target; u.stuckT = 0;
+  }
+}
+function orderHarvest(units, ti) {
+  for (const u of units) if (u.type === 'harv') { u.order = { type: 'harvest' }; u.hs = 'go'; u.oreT = ti; u.stuckT = 0; }
+}
+
+// ============================================================ simulation
+function step() {
+  const dt = DT; G.t += dt;
+  rebuildHash();
+  for (const tm of G.teams) stepProduction(tm, dt);
+  G.aiT -= dt;
+  if (G.aiT <= 0) { G.aiT = 0.5; for (const tm of G.teams) if (tm.ai) runAI(tm); }
+  for (const e of G.ents) { if (e.hp <= 0) continue; if (e.kind === 'u') stepUnit(e, dt); else stepBuilding(e, dt); }
+  separate(dt);
+  stepProjectiles(dt);
+  stepFx(dt);
+  G.oreT -= dt;
+  if (G.oreT <= 0) { G.oreT = 6; for (let i = 0; i < N; i++) if (ore[i] && ore[i] < oreMax[i]) ore[i] = Math.min(oreMax[i], ore[i] + 15); }
+  G.visT -= dt; if (G.visT <= 0) { G.visT = 0.2; updateVis(); }
+  G.endT -= dt; if (G.endT <= 0) { G.endT = 1; checkEnd(); }
+}
+
+function stepBuilding(b, dt) {
+  if (b.bu < 1) b.bu = Math.min(1, b.bu + dt / 1.1);
+  const tm = G.teams[b.team];
+  if (b.hp < b.maxhp * 0.5) {
+    b.smokeT -= dt;
+    if (b.smokeT <= 0) { b.smokeT = b.hp < b.maxhp * 0.25 ? 0.12 : 0.35; const px = (b.tx + 0.2 + rnd() * (b.w - 0.4)) * T, py = (b.ty + 0.2 + rnd() * (b.h - 0.4)) * T; puff(px, py, b.hp < b.maxhp * .25, BDEF[b.type].H * 0.8); }
+  }
+  if (b.type === 'power' && b.bu >= 1 && rnd() < dt * 1.8) { const two = rnd() < .5; G.fx.push({ k: 'vapor', x: b.tx * T + (two ? 20 : 44), y: b.ty * T + (two ? 20 : 44), z: two ? 32 : 28, vx: 4, vy: -4, vz: 14, t: 0, life: 2.2, s: 4 + rnd() * 3 }); }
+  const def = BDEF[b.type];
+  if (!def.weapon || b.bu < 1) return;
+  if (b.cool > 0) b.cool -= dt;
+  b.scanT -= dt;
+  if (!alive(b.target) || distTo(b, b.target) > def.range * T) {
+    b.target = null;
+    if (b.scanT <= 0) { b.scanT = 0.3; b.target = findEnemy(b, def.range * T); }
+  }
+  if (b.target) {
+    const want = Math.atan2(b.target.y - b.y, b.target.x - b.x);
+    b.tdir = turnTo(b.tdir, want, 4.5 * dt);
+    if (b.cool <= 0 && Math.abs(angDiff(b.tdir, want)) < 0.15) { fire(b, b.target, WDEF[def.weapon]); b.cool = WDEF[def.weapon].rof * (tm.low ? 2.2 : 1); }
+  }
+}
+
+function stepUnit(u, dt) {
+  const d = UDEF[u.type], w = d.weapon ? WDEF[d.weapon] : null;
+  if (u.cool > 0) u.cool -= dt;
+  if (u.fireT > 0) u.fireT -= dt;
+  const o = u.order;
+  let moving = false;
+
+  if (u.type === 'harv') { moving = stepHarvester(u, dt); trackStuck(u, dt, moving); return; }
+
+  if (o.type === 'attack') {
+    if (!alive(o.target) || (o.target.team !== 0 && u.team === 0 && !seen(o.target))) { u.order = { type: 'idle' }; u.target = null; }
+    else { u.target = o.target; moving = engage(u, dt, false); }
+  } else if (o.type === 'move' || o.type === 'amove') {
+    if (o.type === 'amove') {
+      if (!alive(u.target) || distTo(u, u.target) > d.sight * T * 1.4) u.target = null;
+      u.scanT -= dt;
+      if (!u.target && u.scanT <= 0) { u.scanT = 0.3; u.target = findEnemy(u, d.sight * T); }
+    }
+    if (o.type === 'amove' && u.target) moving = engage(u, dt, true);
+    else {
+      const r = followTo(u, o.dest, o.fx, o.fy, dt);
+      moving = r === 'moving';
+      if (r === 'done' || r === 'fail' || (u.stuckT > 1.6 && Math.hypot(u.x - o.fx, u.y - o.fy) < 3 * T) || u.stuckT > 4) {
+        u.order = { type: 'idle', gx: u.x, gy: u.y };
+      }
+      // tanks can shoot while driving
+      if (d.cat === 'veh' && w) opportunistic(u, dt, w);
+    }
+  } else { // idle / guard
+    if (o.gx === undefined) { o.gx = u.x; o.gy = u.y; }
+    if (!alive(u.target)) u.target = null;
+    u.scanT -= dt;
+    if (w && !u.target && u.scanT <= 0) { u.scanT = 0.35; u.target = findEnemy(u, d.sight * T); }
+    if (u.target) {
+      if (Math.hypot(u.x - o.gx, u.y - o.gy) > 7 * T && distTo(u, u.target) > d.range * T) {
+        u.target = null; orderMove([u], o.gx, o.gy, 'move');
+      } else moving = engage(u, dt, true);
+    }
+  }
+  trackStuck(u, dt, moving);
+}
+function trackStuck(u, dt, moving) {
+  if (!moving) { u.stuckT = 0; u.lastX = u.x; u.lastY = u.y; return; }
+  if (Math.hypot(u.x - u.lastX, u.y - u.lastY) > 6) { u.stuckT = 0; u.lastX = u.x; u.lastY = u.y; }
+  else u.stuckT += dt;
+}
+function opportunistic(u, dt, w) {
+  const d = UDEF[u.type];
+  u.scanT -= dt;
+  if (!alive(u.target) || distTo(u, u.target) > d.range * T) u.target = null;
+  if (!u.target && u.scanT <= 0) { u.scanT = 0.35; u.target = findEnemy(u, d.range * T); }
+  if (u.target) aimFire(u, dt, w);
+  else u.tdir = turnTo(u.tdir, u.dir, 3 * dt);
+}
+// close in on u.target and shoot. returns true if moving
+function engage(u, dt, auto) {
+  const d = UDEF[u.type], w = WDEF[d.weapon], t = u.target;
+  const dist = distTo(u, t);
+  if (dist <= d.range * T) { aimFire(u, dt, w); return false; }
+  if (d.cat === 'veh') u.tdir = turnTo(u.tdir, Math.atan2(t.y - u.y, t.x - u.x), 3 * dt);
+  if (dist < 6 * T && clearLine(u.x, u.y, t.x, t.y)) { moveToward(u, t.x, t.y, dt); return true; }
+  const r = t.kind === 'b' ? followField(u, bldField(t), t.x, t.y, dt) : followField(u, tileField(tileOf(t.x, t.y)), t.x, t.y, dt);
+  if (r === 'fail') { u.target = null; if (u.order.type === 'attack') u.order = { type: 'idle' }; }
+  return true;
+}
+function aimFire(u, dt, w) {
+  const t = u.target, want = Math.atan2(t.y - u.y, t.x - u.x);
+  if (UDEF[u.type].cat === 'veh') {
+    u.tdir = turnTo(u.tdir, want, 3.6 * dt);
+    if (u.cool <= 0 && Math.abs(angDiff(u.tdir, want)) < 0.12) { fire(u, t, w); u.cool = w.rof; }
+  } else {
+    u.dir = want;
+    if (u.cool <= 0) { fire(u, t, w); u.cool = w.rof * (0.9 + rnd() * 0.2); }
+  }
+}
+// move along a flow field toward a tile; go straight for the last stretch
+function followTo(u, dest, fx, fy, dt) {
+  const dd = Math.hypot(fx - u.x, fy - u.y);
+  if (dd < 3) return 'done';
+  if (dd < 5 * T && clearLine(u.x, u.y, fx, fy)) { moveToward(u, fx, fy, dt); return 'moving'; }
+  return followField(u, tileField(dest), fx, fy, dt);
+}
+function followField(u, f, fx, fy, dt) {
+  const ti = tileOf(u.x, u.y);
+  if (f[ti] === 0) { moveToward(u, fx, fy, dt); return 'moving'; }
+  const x = ti % MW, y = ti / MW | 0;
+  let best = -1, bd = isWalk(ti) ? f[ti] : Infinity;
+  for (const [dx, dy] of DIRS) {
+    const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= MW || yy >= MH) continue;
+    const j = yy * MW + xx;
+    if (dx && dy && (!isWalk(y * MW + xx) || !isWalk(yy * MW + x))) continue;
+    if (f[j] < bd) { bd = f[j]; best = j; }
+  }
+  if (best < 0) {
+    if (f[ti] === Infinity) return 'fail';
+    moveToward(u, fx, fy, dt); return 'moving';
+  }
+  // look one more step ahead along the field for smoother paths
+  let gx = (best % MW + .5) * T, gy = ((best / MW | 0) + .5) * T;
+  const bx = best % MW, by = best / MW | 0; let nb = -1, nd = f[best];
+  for (const [dx, dy] of DIRS) { const j = (by + dy) * MW + bx + dx; if (bx + dx < 0 || by + dy < 0 || bx + dx >= MW || by + dy >= MH) continue; if (f[j] < nd && isWalk(j)) { nd = f[j]; nb = j; } }
+  if (nb >= 0) { const nx = (nb % MW + .5) * T, ny = ((nb / MW | 0) + .5) * T; if (clearLine(u.x, u.y, nx, ny)) { gx = nx; gy = ny; } }
+  moveToward(u, gx, gy, dt);
+  return 'moving';
+}
+function moveToward(u, gx, gy, dt) {
+  const d = UDEF[u.type];
+  const dx = gx - u.x, dy = gy - u.y, dist = Math.hypot(dx, dy); if (dist < 0.5) return;
+  const want = Math.atan2(dy, dx);
+  let sp = d.speed;
+  if (d.cat === 'veh') {
+    u.dir = turnTo(u.dir, want, d.turn * dt);
+    const df = Math.abs(angDiff(u.dir, want)); sp *= df > 1.3 ? 0.08 : df > 0.6 ? 0.45 : 1;
+  } else u.dir = want;
+  const stepL = Math.min(dist, sp * dt);
+  const a = d.cat === 'veh' ? u.dir : want;
+  tryMove(u, Math.cos(a) * stepL, Math.sin(a) * stepL);
+  u.walk += stepL;
+}
+function tryMove(u, mx, my) {
+  const nx = u.x + mx, ny = u.y + my;
+  if (isWalk(tileOf(nx, ny))) { u.x = nx; u.y = ny; return true; }
+  if (isWalk(tileOf(nx, u.y))) { u.x = nx; return true; }
+  if (isWalk(tileOf(u.x, ny))) { u.y = ny; return true; }
+  return false;
+}
+function separate(dt) {
+  for (const c of cells) {
+    for (let i = 0; i < c.length; i++) {
+      const a = c[i]; if (a.kind !== 'u') continue;
+      query(a.x, a.y, 30, b => {
+        if (b === a || b.kind !== 'u' || b.id < a.id) return;
+        const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
+        const minD = (a.r + b.r) * (a.r + b.r < 12 ? 1.05 : 0.85); if (d >= minD) return;
+        const push = Math.min(minD - d, 4) * 0.5;
+        const ax = dx / d, ay = dy / d;
+        const wa = a.r <= b.r ? 0.7 : 0.3;
+        tryMove(a, -ax * push * wa * 2, -ay * push * wa * 2);
+        tryMove(b, ax * push * (1 - wa) * 2, ay * push * (1 - wa) * 2);
+      });
+    }
+  }
+  // units can end up inside a new building footprint: nudge them out
+  for (const u of G.ents) if (u.kind === 'u' && !isWalk(tileOf(u.x, u.y))) {
+    const t = nearestWalk(tileOf(u.x, u.y), 4); const tx = (t % MW + .5) * T, ty = ((t / MW | 0) + .5) * T;
+    u.x += (tx - u.x) * 0.2; u.y += (ty - u.y) * 0.2;
+  }
+}
+
+// ---------- harvesters
+function findOre(u, near) {
+  const sx = (near ?? tileOf(u.x, u.y)) % MW, sy = (near ?? tileOf(u.x, u.y)) / MW | 0;
+  let best = -1, bd = 1e9;
+  const claimed = new Set(G.ents.filter(e => e.type === 'harv' && e !== u && e.oreT != null && (e.hs === 'go' || e.hs === 'mine')).map(e => e.oreT));
+  for (let r = 0; r < 40 && best < 0; r++) {
+    for (let y = sy - r; y <= sy + r; y++) for (let x = sx - r; x <= sx + r; x++) {
+      if (Math.max(Math.abs(x - sx), Math.abs(y - sy)) !== r || x < 0 || y < 0 || x >= MW || y >= MH) continue;
+      const i = y * MW + x; if (ore[i] < 20 || claimed.has(i) || bmap[i] >= 0) continue;
+      const dd = Math.hypot(x - sx, y - sy) - ore[i] / 2000; if (dd < bd) { bd = dd; best = i; }
+    }
+    if (best >= 0) break;
+  }
+  return best;
+}
+function stepHarvester(u, dt) {
+  const tm = G.teams[u.team], o = u.order;
+  if (o.type === 'move') {
+    const r = followTo(u, o.dest, o.fx, o.fy, dt);
+    if (r === 'done' || r === 'fail' || u.stuckT > 3) { u.order = { type: 'harvest' }; u.hs = u.carry >= HARV_CAP ? 'ret' : 'seek'; }
+    return r === 'moving';
+  }
+  if (o.type !== 'harvest') { u.order = { type: 'harvest' }; u.hs = 'seek'; }
+  switch (u.hs) {
+    case 'seek': {
+      u.waitT = (u.waitT || 0) - dt; if (u.waitT > 0) return false;
+      const t = findOre(u, u.lastOre);
+      if (t < 0) { if (u.carry > 0) u.hs = 'ret'; else u.waitT = 2; return false; }
+      u.oreT = t; u.hs = 'go'; return false;
+    }
+    case 'go': {
+      if (ore[u.oreT] < 5) { u.hs = 'seek'; return false; }
+      const fx = (u.oreT % MW + .5) * T, fy = ((u.oreT / MW | 0) + .5) * T;
+      const r = followTo(u, u.oreT, fx, fy, dt);
+      if (r === 'done' || Math.hypot(u.x - fx, u.y - fy) < 8) { u.hs = 'mine'; u.mineT = 0; }
+      else if (r === 'fail' || u.stuckT > 3) { u.hs = 'seek'; u.lastOre = tileOf(u.x, u.y); u.stuckT = 0; }
+      return r === 'moving';
+    }
+    case 'mine': {
+      u.mineT -= dt; u.dir += Math.sin(G.t * 3) * dt * 0.4;
+      if (u.mineT > 0) return false;
+      u.mineT = 0.3;
+      const i = u.oreT, take = Math.min(ore[i], 25, HARV_CAP - u.carry);
+      ore[i] -= take; u.carry += take; u.lastOre = i;
+      if (rnd() < 0.5) G.fx.push({ k: 'spark', x: u.x + Math.cos(u.dir) * 15, y: u.y + Math.sin(u.dir) * 15, z: 3, vx: (rnd() - .5) * 30, vy: (rnd() - .5) * 30, vz: 40 + rnd() * 50, t: 0, life: 0.45, c: '#ffd34d' });
+      if (u.carry >= HARV_CAP) { u.hs = 'ret'; return false; }
+      if (ore[i] < 5) { const n = findOre(u, i); if (n >= 0 && Math.abs(n % MW - i % MW) <= 3 && Math.abs((n / MW | 0) - (i / MW | 0)) <= 3) { u.oreT = n; u.hs = 'go'; } else u.hs = u.carry > HARV_CAP * 0.4 ? 'ret' : 'seek'; }
+      return false;
+    }
+    case 'ret': {
+      let ref = alive(u.home) ? u.home : null;
+      if (!ref) {
+        let bd = 1e9;
+        for (const e of G.ents) if (e.kind === 'b' && e.team === u.team && e.type === 'refinery') { const dd = Math.hypot(e.x - u.x, e.y - u.y); if (dd < bd) { bd = dd; ref = e; } }
+        u.home = ref;
+      }
+      if (!ref) { u.waitT = 2; return false; }
+      const dock = exitTile(ref), fx = (dock % MW + .5) * T, fy = ((dock / MW | 0) + .5) * T;
+      const r = followTo(u, dock, fx, fy, dt);
+      if (r === 'done' || Math.hypot(u.x - fx, u.y - fy) < 10) { u.hs = 'unload'; u.mineT = 0; }
+      else if (r === 'fail') { u.home = null; u.waitT = 2; }
+      return r === 'moving';
+    }
+    case 'unload': {
+      u.dir = turnTo(u.dir, -Math.PI / 2, 3 * dt);
+      u.mineT -= dt; if (u.mineT > 0) return false;
+      u.mineT = 0.08;
+      const give = Math.min(u.carry, 40); u.carry -= give; tm.credits += give; tm.mined += give;
+      if (u.carry <= 0) { u.hs = 'seek'; }
+      return false;
+    }
+  }
+  return false;
+}
+
+// ---------- weapons
+function fire(src, t, w) {
+  const fa = src.kind === 'u' && UDEF[src.type].cat === 'inf' ? src.dir : src.tdir, fd = src.kind === 'b' ? 22 : src.type === 'tank' ? 20 : 9;
+  const mx = src.x + Math.cos(fa) * fd, my = src.y + Math.sin(fa) * fd, mz = src.kind === 'b' ? 12 : src.type === 'tank' ? 10.5 : 9;
+  const tz = t.kind === 'b' ? 10 : (UH[t.type] || 10) * 0.5;
+  src.fireT = 0.08;
+  if (seen(src) || seen(t)) sfx(w.snd, mx, my);
+  if (w.kind === 'bullet') {
+    G.fx.push({ k: 'tracer', x: mx, y: my, z: mz, x2: t.x + (rnd() - .5) * 6, y2: t.y + (rnd() - .5) * 6, z2: tz, t: 0, life: 0.07 });
+    G.fx.push({ k: 'flash', x: mx, y: my, z: mz, t: 0, life: 0.06, s: 3 });
+    damage(t, w.dmg, w, src);
+  } else {
+    G.fx.push({ k: 'flash', x: mx, y: my, z: mz, t: 0, life: 0.09, s: w.kind === 'shell' ? 7 : 4 });
+    const spread = w.kind === 'shell' ? 6 : 0;
+    G.proj.push({ k: w.kind, x: mx, y: my, tx: t.x + (rnd() - .5) * spread, ty: t.y + (rnd() - .5) * spread, target: t, w, team: src.team, src, sp: w.speed, life: 3, a: Math.atan2(t.y - my, t.x - mx), z: mz, z0: mz, d0: Math.max(1, Math.hypot(t.x - mx, t.y - my)) });
+  }
+}
+function stepProjectiles(dt) {
+  for (const p of G.proj) {
+    if (p.k === 'rocket' && alive(p.target)) { p.tx = p.target.x; p.ty = p.target.y; }
+    const want = Math.atan2(p.ty - p.y, p.tx - p.x);
+    p.a = p.k === 'rocket' ? turnTo(p.a, want, 7 * dt) : want;
+    const d = Math.hypot(p.tx - p.x, p.ty - p.y), stepL = p.sp * dt;
+    p.life -= dt;
+    const prog = clamp(1 - d / p.d0, 0, 1);
+    p.z = p.k === 'shell' ? lerp(p.z0, 4, prog) + Math.sin(Math.PI * prog) * Math.min(26, p.d0 * 0.09) : lerp(p.z0, 6, prog);
+    if (p.k === 'rocket' && rnd() < 0.8) G.fx.push({ k: 'smoke', x: p.x, y: p.y, z: p.z, t: 0, life: 0.6, s: 2.5, vz: 6 });
+    if (d <= stepL + 2 || p.life <= 0) {
+      p.dead = true;
+      boom(p.tx, p.ty, p.k === 'shell' ? 0.7 : 0.55);
+      const sp = p.w.splash || 0;
+      if (alive(p.target) && (p.target.kind === 'b' ? bldRectDist(p.target, p.tx, p.ty) < 6 : Math.hypot(p.target.x - p.tx, p.target.y - p.ty) < p.target.r + sp)) damage(p.target, p.w.dmg, p.w, p.src);
+      if (sp) query(p.tx, p.ty, sp + 16, e => { if (e !== p.target && e.team !== p.team && e.kind === 'u' && e.hp > 0 && Math.hypot(e.x - p.tx, e.y - p.ty) < sp + e.r * .5) damage(e, p.w.dmg * 0.4, p.w, p.src); });
+    } else { p.x += Math.cos(p.a) * stepL; p.y += Math.sin(p.a) * stepL; }
+  }
+  G.proj = G.proj.filter(p => !p.dead);
+}
+function damage(e, dmg, w, src) {
+  if (e.hp <= 0) return;
+  const arm = e.kind === 'b' ? 2 : ARM[UDEF[e.type].armor];
+  e.hp -= dmg * w.vs[arm];
+  e.dmgT = 0.15;
+  if (e.team === 0 && e.kind === 'b' && G.t - G.teams[0].lastWarn > 20) { G.teams[0].lastWarn = G.t; say('我方基地遭到攻击', true); sfx('alert'); }
+  if (e.kind === 'u' && alive(src) && !e.target && UDEF[e.type].weapon && e.order.type === 'idle') e.target = src;
+  if (alive(src) && G.teams[e.team].ai) G.teams[e.team].ai_.help = src;
+  if (e.hp <= 0) kill(e, src);
+}
+function kill(e, src) {
+  e.hp = 0;
+  G.byId.delete(e.id);
+  G.ents = G.ents.filter(x => x !== e);
+  sel.delete(e); if (selB === e) selB = null;
+  const tm = G.teams[e.team];
+  if (src && G.teams[src.team]) G.teams[src.team].kills++;
+  if (e.kind === 'b') {
+    for (const i of e.tiles) bmap[i] = -1;
+    fieldVer++; tm.lostB++;
+    const n = e.w * e.h;
+    for (let k = 0; k < n + 2; k++) setTimeout0(k * 0.09, () => boom((e.tx + rnd() * e.w) * T, (e.ty + rnd() * e.h) * T, 1.1));
+    G.decals.push({ k: 'rubble', x: e.tx * T, y: e.ty * T, w: e.w * T, h: e.h * T, seed: e.id });
+    if (seen(e)) sfx('bigboom', e.x, e.y);
+    recount();
+  } else {
+    tm.lostU++;
+    if (UDEF[e.type].cat === 'veh') {
+      boom(e.x, e.y, 1.3); G.decals.push({ k: 'scorch', x: e.x, y: e.y, r: 16 });
+      if (seen(e)) sfx('boom', e.x, e.y);
+    } else {
+      G.fx.push({ k: 'body', x: e.x, y: e.y, z: 0, t: 0, life: 2.5, team: e.team, a: e.dir });
+      if (seen(e)) sfx('die', e.x, e.y);
+    }
+    tm.cnt[e.type] = (tm.cnt[e.type] || 1) - 1;
+  }
+  if (G.decals.length > 120) G.decals.shift();
+}
+const timers = [];
+function setTimeout0(delay, fn) { timers.push({ t: G.t + delay, fn }); }
+function boom(x, y, s) {
+  G.fx.push({ k: 'boom', x, y, z: 2, t: 0, life: 0.45 + s * 0.25, s: 10 * s });
+  for (let k = 0; k < 4 * s; k++) G.fx.push({ k: 'spark', x, y, z: 4, vx: (rnd() - .5) * 110 * s, vy: (rnd() - .5) * 110 * s, vz: 60 + rnd() * 120 * s, t: 0, life: 0.3 + rnd() * 0.4, c: rnd() < .5 ? '#ffcf5a' : '#ff7a2e' });
+  puff(x, y, false, 4);
+}
+function puff(x, y, fire, z = 0) { G.fx.push({ k: fire ? 'fire' : 'smoke', x: x + (rnd() - .5) * 6, y: y + (rnd() - .5) * 6, z, t: 0, life: fire ? 0.6 : 1.4, s: fire ? 4 : 5, vx: (rnd() - .5) * 6, vy: (rnd() - .5) * 6, vz: 16 }); }
+function stepFx(dt) {
+  for (const f of G.fx) {
+    f.t += dt;
+    if (f.vx !== undefined) { f.x += f.vx * dt; f.y += f.vy * dt; }
+    if (f.vz !== undefined) { f.z += f.vz * dt; if (f.k === 'spark') { f.vz -= 320 * dt; if (f.z < 0) { f.z = 0; f.vz *= -0.3; f.vx *= 0.5; f.vy *= 0.5; } } }
+  }
+  G.fx = G.fx.filter(f => f.t < f.life);
+  if (G.fx.length > 700) G.fx.splice(0, G.fx.length - 700);
+  for (let i = timers.length - 1; i >= 0; i--) if (timers[i].t <= G.t) { const f = timers[i].fn; timers.splice(i, 1); f(); }
+}
+
+function checkEnd() {
+  if (G.over) return;
+  const has = G.teams.map(tm => G.ents.some(e => e.team === tm.i && (e.kind === 'b' || e.type === 'mcv')));
+  if (!has[0] || !has[1]) {
+    G.over = has[0] ? 'win' : 'lose';
+    setTimeout(showEnd, 1600);
+  }
+}
+
+// ============================================================ AI
+const AI_ORDER = ['power', 'refinery', 'barracks', 'power', 'factory', 'turret', 'refinery', 'power', 'turret', 'power', 'turret', 'turret'];
+function runAI(tm) {
+  const s = tm.ai_, myB = G.ents.filter(e => e.team === tm.i && e.kind === 'b'), myU = G.ents.filter(e => e.team === tm.i && e.kind === 'u');
+  const hq = myB.find(e => e.type === 'hq');
+  const foe = G.teams[1 - tm.i];
+  for (const u of myU) if (u.type === 'mcv' && u.order.type === 'idle' && !deploy(u)) orderMove([u], u.x + (rnd() - .5) * 4 * T, u.y + (rnd() - .5) * 4 * T);
+  // --- buildings
+  if (tm.bq && tm.bq.ready) {
+    const spot = aiSpot(tm, tm.bq.type, hq || myB[0]);
+    if (spot) placeBuilding(tm, spot[0], spot[1]); else cancelBuilding(tm);
+  } else if (!tm.bq && hq) {
+    let want = null;
+    const netAfter = t => tm.powerP - tm.powerU + (BDEF[t].power || 0);
+    if (s.step < AI_ORDER.length) {
+      want = AI_ORDER[s.step];
+      if (!canBuild(tm, want)) want = null;
+    } else {
+      if (tm.powerP - tm.powerU < 30) want = 'power';
+      else if ((tm.cnt.turret || 0) < 6 && tm.credits > 1500) want = 'turret';
+      else if ((tm.cnt.refinery || 0) < 3 && tm.credits > 2500) want = 'refinery';
+    }
+    if (want && want !== 'power' && netAfter(want) < 0) want = 'power';
+    if (want && startBuilding(tm, want) && s.step < AI_ORDER.length && want === AI_ORDER[s.step]) s.step++;
+  }
+  // --- units
+  const harvs = myU.filter(u => u.type === 'harv').length, refs = tm.cnt.refinery || 0;
+  if (tm.cnt.factory) {
+    // no harvesters left: drop the vehicle queue so a new one comes first
+    if (refs > 0 && harvs === 0 && tm.q.veh[0] !== 'harv') { while (tm.q.veh.length) cancelUnit(tm, tm.q.veh[tm.q.veh.length - 1]); queueUnit(tm, 'harv'); }
+    const wantHarv = refs > 0 && harvs + tm.q.veh.filter(t => t === 'harv').length < Math.min(refs * 2, 4) && G.t > 60;
+    if (wantHarv && tm.q.veh.length < 2 && !tm.q.veh.includes('harv')) queueUnit(tm, 'harv');
+    else if (tm.q.veh.length < 2 && tm.credits > 900) queueUnit(tm, 'tank');
+  }
+  if (tm.cnt.barracks && tm.q.inf.length < 2 && tm.credits > 350) queueUnit(tm, rnd() < 0.55 ? 'rifle' : 'rocket');
+  // --- defence: anything hostile near our buildings draws idle army units
+  const army = myU.filter(u => G.byId.has(u.id) && UDEF[u.type].weapon);
+  let threat = null;
+  if (alive(s.help)) threat = s.help; s.help = null;
+  if (!threat) for (const b of myB) { const e = findEnemy(b, 10 * T); if (e) { threat = e; break; } }
+  if (threat) {
+    const defenders = army.filter(u => !s.waveIds.has(u.id) && u.order.type !== 'attack' && Math.hypot(u.x - threat.x, u.y - threat.y) < 22 * T);
+    if (defenders.length) orderAttack(defenders, threat);
+  } else {
+    // regroup idle home units at a rally point between base and the enemy
+    const foeHQ = G.ents.find(e => e.team === foe.i && e.kind === 'b');
+    if (hq && foeHQ && !tm.rally.inf) {
+      const a = Math.atan2(foeHQ.y - hq.y, foeHQ.x - hq.x);
+      tm.rally.inf = tm.rally.veh = { x: hq.x + Math.cos(a) * 6 * T, y: hq.y + Math.sin(a) * 6 * T };
+    }
+  }
+  // --- attack waves
+  for (const id of [...s.waveIds]) if (!G.byId.has(id)) s.waveIds.delete(id);
+  const home = army.filter(u => !s.waveIds.has(u.id));
+  if (G.t > s.nextAttack && home.length >= s.wave) {
+    for (const u of home) s.waveIds.add(u.id);
+    s.wave = Math.min(s.wave + DIFF[difficulty].waveGrow, DIFF[difficulty].waveMax);
+    s.nextAttack = G.t + DIFF[difficulty].gap;
+  }
+  if (s.waveIds.size) {
+    const wave = [...s.waveIds].map(id => G.byId.get(id));
+    const idle = wave.filter(u => u.order.type === 'idle' && !u.target);
+    if (idle.length) {
+      // head for the nearest enemy building to the wave's centre
+      const cx = wave.reduce((a, u) => a + u.x, 0) / wave.length, cy = wave.reduce((a, u) => a + u.y, 0) / wave.length;
+      let tgt = null, bd = 1e9;
+      for (const e of G.ents) if (e.team === foe.i && e.kind === 'b') { const dd = Math.hypot(e.x - cx, e.y - cy); if (dd < bd) { bd = dd; tgt = e; } }
+      if (tgt) orderMove(idle, tgt.x, tgt.y + T * 1.5, 'amove');
+    }
+  }
+}
+function aiSpot(tm, type, anchor) {
+  if (!anchor) return null;
+  const d = BDEF[type], foe = G.ents.find(e => e.team !== tm.i && e.kind === 'b');
+  const ax = anchor.tx + anchor.w / 2, ay = anchor.ty + anchor.h / 2;
+  let best = null, bs = 1e9;
+  for (let y = 1; y < MH - d.h - 1; y++) for (let x = 1; x < MW - d.w - 1; x++) {
+    const dc = Math.hypot(x + d.w / 2 - ax, y + d.h / 2 - ay); if (dc > 14) continue;
+    if (!canPlace(tm, type, x, y, type === 'turret' ? 0 : 1)) continue;
+    let sc = dc + rnd() * 1.5;
+    if (type === 'turret' && foe) sc = Math.hypot(x - foe.tx, y - foe.ty) * 0.6 + dc * 0.6;
+    if (type === 'refinery') { const n = nearestOreDist(x + 1, y + 1); sc = n * 1.2 + dc * 0.3; }
+    if (sc < bs) { bs = sc; best = [x, y]; }
+  }
+  return best;
+}
+function nearestOreDist(cx, cy) {
+  let bd = 99;
+  for (let y = Math.max(0, cy - 12); y < Math.min(MH, cy + 12); y++) for (let x = Math.max(0, cx - 12); x < Math.min(MW, cx + 12); x++)
+    if (ore[y * MW + x] > 50) bd = Math.min(bd, Math.hypot(x - cx, y - cy));
+  return bd;
+}
+
+// ============================================================ rendering (isometric, 2:1)
+// The simulation runs on a flat square grid (world px). Everything is drawn through the projection
+//   screen = (x - y, (x + y) / 2 - z)
+// so a 32px tile becomes a 64x32 diamond. Ground layers use the same projection as a canvas transform.
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const mapEl = document.getElementById('map');
+const P = (x, y, z = 0) => [x - y, (x + y) * 0.5 - z];
+const ISO_W = (MW + MH) * T, ISO_H = (MW + MH) * T / 2;
+const groundOn = c => c.transform(1, 0.5, -1, 0.5, 0, 0);
+const UH = { rifle: 13, rocket: 13, tank: 13, harv: 16, mcv: 20 };
+function resize() {
+  const r = mapEl.getBoundingClientRect();
+  view.w = Math.max(1, r.width); view.h = Math.max(1, r.height);
+  view.dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(view.w * view.dpr); cv.height = Math.round(view.h * view.dpr);
+  clampCam();
+}
+const defaultZoom = () => clamp(view.w / (13 * 2 * T), 0.55, 1.5);
+function clampCam() {
+  const minZ = Math.max(view.w / ISO_W, view.h / ISO_H) * 1.6;
+  cam.z = clamp(cam.z, minZ, 2.2);
+  cam.x = clamp(cam.x, -MH * T, MW * T - view.w / cam.z);
+  cam.y = clamp(cam.y, 0, ISO_H - view.h / cam.z);
+}
+function centerOn(x, y) { const [ix, iy] = P(x, y); cam.x = ix - view.w / cam.z / 2; cam.y = iy - view.h / cam.z / 2; clampCam(); }
+const s2i = (sx, sy) => ({ ix: cam.x + sx / cam.z, iy: cam.y + sy / cam.z });
+const i2w = (ix, iy) => ({ x: iy + ix / 2, y: iy - ix / 2 });
+const s2w = (sx, sy) => { const { ix, iy } = s2i(sx, sy); return i2w(ix, iy); };
+const onScreenI = (ix, iy, mx = 60, my = 60) => ix > cam.x - mx && ix < cam.x + view.w / cam.z + mx && iy > cam.y - my && iy < cam.y + view.h / cam.z + my * 2;
+const onScreen = e => { const [ix, iy] = P(e.x, e.y); return onScreenI(ix, iy, 0, 0); };
+
+// ---------- drawing primitives
+const shadeCache = new Map();
+function sh(hex, f) { const k = hex + f.toFixed(2); let v = shadeCache.get(k); if (!v) { v = shade(hex, f); shadeCache.set(k, v); } return v; }
+function fillPoly(c, pts, col) { c.fillStyle = col; c.beginPath(); c.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]); c.closePath(); c.fill(); }
+// upright prism over a convex world polygon. Faces turned toward the viewer (+x+y) are drawn, lit from the left.
+function prism(c, pts, z0, z1, col, fl, topCol) {
+  const n = pts.length; let cx = 0, cy = 0; for (const p of pts) { cx += p[0]; cy += p[1]; } cx /= n; cy /= n;
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    let nx = b[1] - a[1], ny = a[0] - b[0];
+    if (nx * ((a[0] + b[0]) / 2 - cx) + ny * ((a[1] + b[1]) / 2 - cy) < 0) { nx = -nx; ny = -ny; }
+    if (nx + ny <= 1e-4) continue;
+    const f = ((ny - nx) / Math.hypot(nx, ny)) * 0.16 - 0.24;
+    fillPoly(c, [P(a[0], a[1], z0), P(b[0], b[1], z0), P(b[0], b[1], z1), P(a[0], a[1], z1)], fl ? '#ffffff' : sh(col, f));
+  }
+  fillPoly(c, pts.map(p => P(p[0], p[1], z1)), fl ? '#ffffff' : sh(topCol || col, 0.1));
+}
+const boxW = (c, x0, y0, x1, y1, z0, z1, col, fl, topCol) => prism(c, [[x0, y0], [x1, y0], [x1, y1], [x0, y1]], z0, z1, col, fl, topCol);
+const band = (c, x0, y0, x1, y1, z0, z1, col, fl) => boxW(c, x0, y0, x1, y1, z0, z1, col, fl, '#8a9196');
+function rbox(c, cx, cy, ang, f0, f1, s0, s1, z0, z1, col, fl) {
+  const co = Math.cos(ang), si = Math.sin(ang), pt = (f, s) => [cx + f * co - s * si, cy + f * si + s * co];
+  prism(c, [pt(f0, s0), pt(f1, s0), pt(f1, s1), pt(f0, s1)], z0, z1, col, fl);
+}
+function octo(cx, cy, r) { const o = []; for (let k = 0; k < 8; k++) { const a = (k + 0.5) / 8 * Math.PI * 2; o.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]); } return o; }
+function cyl(c, x, y, r, z0, z1, col, fl, hole) {
+  const [sx, sy0] = P(x, y, z0), sy1 = sy0 - (z1 - z0), rx = r * 1.414, ry = r * 0.707;
+  const g = c.createLinearGradient(sx - rx, 0, sx + rx, 0);
+  g.addColorStop(0, sh(col, 0.08)); g.addColorStop(0.4, sh(col, -0.08)); g.addColorStop(1, sh(col, -0.42));
+  c.fillStyle = fl ? '#fff' : g;
+  c.beginPath(); c.ellipse(sx, sy0, rx, ry, 0, 0, Math.PI); c.lineTo(sx - rx, sy1); c.ellipse(sx, sy1, rx, ry, 0, Math.PI, Math.PI * 2); c.closePath(); c.fill();
+  c.fillStyle = fl ? '#fff' : sh(col, 0.15); c.beginPath(); c.ellipse(sx, sy1, rx, ry, 0, 0, 7); c.fill();
+  if (hole) { c.fillStyle = '#23282b'; c.beginPath(); c.ellipse(sx, sy1, rx * 0.74, ry * 0.74, 0, 0, 7); c.fill(); }
+}
+const line3 = (c, a, b, col, w) => { c.strokeStyle = col; c.lineWidth = w; c.beginPath(); c.moveTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.stroke(); };
+function faceY(c, y, xa, xb, za, zb, col) { fillPoly(c, [P(xa, y, za), P(xb, y, za), P(xb, y, zb), P(xa, y, zb)], col); }  // quad on a +y wall
+function faceX(c, x, ya, yb, za, zb, col) { fillPoly(c, [P(x, ya, za), P(x, yb, za), P(x, yb, zb), P(x, ya, zb)], col); }  // quad on a +x wall
+function hazardY(c, y, xa, xb, za, zb) {
+  faceY(c, y, xa, xb, za, zb, '#d9a324');
+  c.save(); c.beginPath(); const q = [P(xa, y, za), P(xb, y, za), P(xb, y, zb), P(xa, y, zb)]; c.moveTo(...q[0]); for (const p of q) c.lineTo(...p); c.clip();
+  c.strokeStyle = '#25221c'; c.lineWidth = 2.5;
+  for (let k = xa - 20; k < xb + 20; k += 7) { const a = P(k, y, za), b = P(k + 10, y, zb); c.beginPath(); c.moveTo(...a); c.lineTo(...b); c.stroke(); }
+  c.restore();
+}
+
+// ---------- frame
+function render() {
+  if (!G) return;
+  const z = cam.z * view.dpr;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#06080a'; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
+  ctx.imageSmoothingEnabled = true;
+  // visible tile range (inverse-project the screen corners, with room for tall things)
+  const cs = [[0, 0], [view.w, 0], [0, view.h + 120], [view.w, view.h + 120]].map(([a, b]) => s2w(a, b));
+  const tx0 = clamp(Math.floor(Math.min(...cs.map(p => p.x)) / T) - 1, 0, MW - 1), tx1 = clamp(Math.ceil(Math.max(...cs.map(p => p.x)) / T) + 1, 0, MW - 1);
+  const ty0 = clamp(Math.floor(Math.min(...cs.map(p => p.y)) / T) - 1, 0, MH - 1), ty1 = clamp(Math.ceil(Math.max(...cs.map(p => p.y)) / T) + 1, 0, MH - 1);
+
+  // ground layer
+  ctx.save(); groundOn(ctx);
+  ctx.drawImage(terrC, 0, 0);
+  for (const d of G.decals) {
+    if (d.k === 'scorch') { const g = ctx.createRadialGradient(d.x, d.y, 1, d.x, d.y, d.r); g.addColorStop(0, 'rgba(10,8,6,.55)'); g.addColorStop(1, 'rgba(10,8,6,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); }
+    else drawRubble(d);
+  }
+  for (const e of G.ents) if (e.type === 'refinery' && seen(e)) { const t = exitTile(e); drawDock((t % MW) * T, (t / MW | 0) * T); }
+  for (const m of marks) drawMark(m);
+  if (placing) drawGhostTiles();
+  if (selB) drawFootSel(selB);
+  ctx.restore();
+
+  // ore crystals
+  for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) { const i = y * MW + x; if (ore[i] && expl[i]) drawOre(x, y, ore[i]); }
+  // unit shadows
+  for (const e of G.ents) if (e.kind === 'u' && seen(e)) { const [sx, sy] = P(e.x, e.y); if (onScreenI(sx, sy)) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + 2, sy + 1, e.r * 1.5, e.r * 0.8, 0, 0, 7); ctx.fill(); } }
+  // upright things, back to front
+  const list = [];
+  for (const p of props) { if (p.x < tx0 * T - T || p.x > (tx1 + 1) * T || p.y < ty0 * T - T || p.y > (ty1 + 1) * T || !expl[tileOf(p.x, p.y)]) continue; const [ix, iy] = P(p.x, p.y); if (onScreenI(ix, iy)) list.push(p); }
+  for (const e of G.ents) { if (!seen(e)) continue; const [ix, iy] = P(e.x, e.y); if (onScreenI(ix, iy, 120, 90)) list.push(e); }
+  list.sort((a, b) => (a.x + a.y) - (b.x + b.y));
+  for (const e of list) {
+    if (e.kind === 'b') drawBuilding(ctx, e, TEAM[e.team]);
+    else if (e.kind === 'u') drawUnit(ctx, e, TEAM[e.team]);
+    else drawProp(ctx, e);
+  }
+  for (const f of G.fx) drawFx(f);
+  for (const p of G.proj) drawProj(p);
+  // fog over everything on the ground
+  ctx.save(); groundOn(ctx); ctx.drawImage(fogC, 0, 0, MW, MH, 0, 0, MW * T, MH * T); ctx.restore();
+  // overlays
+  if (selB && selB.team === 0 && (selB.type === 'barracks' || selB.type === 'factory')) {
+    const r = G.teams[0].rally[selB.type === 'barracks' ? 'inf' : 'veh'];
+    if (r) { ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.setLineDash([5, 5]); ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(...P(selB.x, selB.y)); ctx.lineTo(...P(r.x, r.y)); ctx.stroke(); ctx.setLineDash([]); drawFlag(r.x, r.y); }
+  }
+  if (placing && placing.tx != null) { ctx.globalAlpha = 0.65; drawBuilding(ctx, { type: placing.type, tx: placing.tx, ty: placing.ty, x: (placing.tx + BDEF[placing.type].w / 2) * T, y: (placing.ty + BDEF[placing.type].h / 2) * T, team: 0, bu: 1, tdir: -2.4, hp: 1, maxhp: 1 }, TEAM[0], true); ctx.globalAlpha = 1; }
+  for (const e of sel) drawSelU(e);
+  if (selB) drawHp(selB);
+  for (const e of list) if (e.kind && e.hp < e.maxhp && !sel.has(e) && e !== selB && (e.dmgT > 0 || e.kind === 'b')) drawHp(e);
+  for (const e of list) if (e.dmgT > 0) e.dmgT -= 1 / 60;
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  if (boxDrag) {
+    const x = Math.min(boxDrag.x0, boxDrag.x1), y = Math.min(boxDrag.y0, boxDrag.y1), w = Math.abs(boxDrag.x1 - boxDrag.x0), h = Math.abs(boxDrag.y1 - boxDrag.y0);
+    ctx.fillStyle = 'rgba(125,255,154,.08)'; ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = '#7dff9a'; ctx.lineWidth = 1; ctx.strokeRect(x + .5, y + .5, w, h);
+  }
+}
+
+// ---------- terrain pieces
+function drawOre(x, y, a) {
+  const n = a > 450 ? 4 : a > 250 ? 3 : a > 100 ? 2 : 1;
+  for (let k = 0; k < n; k++) {
+    const [cx, cy] = P(x * T + 5 + hash2(x * 5 + k, y * 3) * 22, y * T + 5 + hash2(x * 3, y * 5 + k) * 22);
+    const s = 3 + hash2(x + k * 9, y) * 2.6;
+    ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(cx + 2, cy + 1, s * 1.4, s * .55, 0, 0, 7); ctx.fill();
+    ctx.fillStyle = '#9c6c16'; ctx.beginPath(); ctx.moveTo(cx - s, cy); ctx.lineTo(cx - s * .5, cy - s * 2.1); ctx.lineTo(cx + s * .4, cy - s * 2.5); ctx.lineTo(cx + s, cy - s * .3); ctx.lineTo(cx + s * .2, cy + s * .5); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#ffd04a'; ctx.beginPath(); ctx.moveTo(cx - s * .7, cy - .3); ctx.lineTo(cx - s * .45, cy - s * 1.9); ctx.lineTo(cx + s * .35, cy - s * 2.3); ctx.lineTo(cx + s * .05, cy + .2); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(255,250,215,.9)'; ctx.fillRect(cx - s * .35, cy - s * 1.7, 1.2, 2.4);
+  }
+}
+function drawDock(x, y) {
+  ctx.fillStyle = 'rgba(30,32,34,.65)'; ctx.fillRect(x + 2, y + 2, T - 4, T - 4);
+  ctx.save(); ctx.beginPath(); ctx.rect(x + 2, y + 2, T - 4, T - 4); ctx.clip();
+  ctx.strokeStyle = 'rgba(255,190,40,.6)'; ctx.lineWidth = 3;
+  for (let k = -T; k < T * 2; k += 8) { ctx.beginPath(); ctx.moveTo(x + k, y); ctx.lineTo(x + k + T, y + T); ctx.stroke(); }
+  ctx.restore();
+}
+function drawRubble(d) {
+  ctx.fillStyle = 'rgba(25,22,20,.5)'; ctx.fillRect(d.x + 3, d.y + 3, d.w - 6, d.h - 6);
+  for (let k = 0; k < d.w * d.h / 90; k++) {
+    const x = d.x + 4 + hash2(d.seed, k) * (d.w - 8), y = d.y + 4 + hash2(k, d.seed) * (d.h - 8);
+    ctx.fillStyle = k % 3 ? '#4d4a46' : '#2c2a28'; ctx.fillRect(x, y, 2 + hash2(k, k) * 4, 2 + hash2(k + 1, k) * 3);
+  }
+}
+function drawFlag(x, y) {
+  const [sx, sy] = P(x, y);
+  ctx.strokeStyle = '#ddd'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(sx, sy - 18); ctx.stroke();
+  ctx.fillStyle = TEAM[0].main; ctx.beginPath(); ctx.moveTo(sx, sy - 18); ctx.lineTo(sx + 10, sy - 15); ctx.lineTo(sx, sy - 12); ctx.fill();
+}
+function drawProp(c, p) {
+  const [sx, sy] = P(p.x, p.y), s = p.s;
+  if (p.k === 'tree') {
+    c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(sx + 6 * s, sy + 1, 12 * s, 5 * s, 0, 0, 7); c.fill();
+    c.fillStyle = '#4a3423'; c.fillRect(sx - 1.6 * s, sy - 9 * s, 3.2 * s, 9 * s);
+    const L = 18 + p.h * 8;
+    for (const [ox, oy, r, l] of [[0, -18, 9, L], [-6, -13, 7, L - 4], [6, -12, 7.5, L - 6], [1, -23, 6.5, L + 5]]) {
+      const g = c.createRadialGradient(sx + (ox - r * .4) * s, sy + (oy - r * .4) * s, 1, sx + ox * s, sy + oy * s, r * s);
+      g.addColorStop(0, `hsl(${100 + p.h * 20},34%,${l + 12}%)`); g.addColorStop(1, `hsl(${110 + p.h * 20},38%,${l - 6}%)`);
+      c.fillStyle = g; c.beginPath(); c.arc(sx + ox * s, sy + oy * s, r * s, 0, 7); c.fill();
+    }
+  } else if (p.k === 'rock') {
+    c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(sx + 5 * s, sy + 1, 14 * s, 5 * s, 0, 0, 7); c.fill();
+    const L = 40 + p.h * 14;
+    c.fillStyle = `hsl(32,7%,${L - 12}%)`; c.beginPath(); c.moveTo(sx - 13 * s, sy); c.lineTo(sx - 10 * s, sy - 9 * s); c.lineTo(sx - 2 * s, sy - 15 * s); c.lineTo(sx + 8 * s, sy - 12 * s); c.lineTo(sx + 13 * s, sy - 3 * s); c.lineTo(sx + 8 * s, sy + 3 * s); c.lineTo(sx - 6 * s, sy + 3 * s); c.closePath(); c.fill();
+    c.fillStyle = `hsl(35,6%,${L + 6}%)`; c.beginPath(); c.moveTo(sx - 10 * s, sy - 9 * s); c.lineTo(sx - 2 * s, sy - 15 * s); c.lineTo(sx + 8 * s, sy - 12 * s); c.lineTo(sx + 2 * s, sy - 6 * s); c.lineTo(sx - 7 * s, sy - 5 * s); c.closePath(); c.fill();
+    c.fillStyle = `hsl(30,8%,${L - 22}%)`; c.beginPath(); c.moveTo(sx + 2 * s, sy - 6 * s); c.lineTo(sx + 8 * s, sy - 12 * s); c.lineTo(sx + 13 * s, sy - 3 * s); c.lineTo(sx + 8 * s, sy + 3 * s); c.closePath(); c.fill();
+  } else {
+    for (let k = 0; k < 3; k++) { c.fillStyle = `hsl(${92 + k * 8},30%,${22 + k * 5}%)`; c.beginPath(); c.arc(sx - 4 + k * 4 * s, sy - 3 - (k === 1 ? 2 : 0), (4.5 - k * .6) * s, 0, 7); c.fill(); }
+  }
+}
+
+// ---------- units
+function drawUnit(c, u, tc) {
+  const fl = u.dmgT > 0.08, x = u.x, y = u.y, a = u.dir;
+  const barrel = (ang, len, z, w, from = 4) => line3(c, P(x + Math.cos(ang) * from, y + Math.sin(ang) * from, z), P(x + Math.cos(ang) * len, y + Math.sin(ang) * len, z), '#2a2e31', w);
+  if (u.type === 'tank') {
+    rbox(c, x, y, a, -12, 12, -10, -5, 0, 5, '#2e3337', fl);
+    rbox(c, x, y, a, -12, 12, 5, 10, 0, 5, '#2e3337', fl);
+    rbox(c, x, y, a, -11, 11, -6.5, 6.5, 2.5, 8, tc.main, fl);
+    const t = u.tdir, back = Math.cos(t) + Math.sin(t) < 0;
+    if (back) barrel(t, 19, 10.5, 2.6);
+    prism(c, octo(x - Math.cos(t) * 1.5, y - Math.sin(t) * 1.5, 6), 8, 12.5, tc.main, fl);
+    if (!back) barrel(t, 19, 10.5, 2.6);
+    if (u.fireT > 0) { const [fx, fy] = P(x + Math.cos(t) * 21, y + Math.sin(t) * 21, 10.5); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fx, fy, 3.5, 0, 7); c.fill(); }
+  } else if (u.type === 'harv') {
+    rbox(c, x, y, a, -14, 14, -11, -6, 0, 5, '#2e3337', fl);
+    rbox(c, x, y, a, -14, 14, 6, 11, 0, 5, '#2e3337', fl);
+    rbox(c, x, y, a, -13, 13, -8, 8, 3, 8, '#5c6368', fl);
+    rbox(c, x, y, a, -12, 3, -7, 7, 8, 14, '#6f767b', fl);
+    if (u.carry > 0) { const f = Math.sqrt(u.carry / HARV_CAP); const [gx, gy] = P(x - Math.cos(a) * 4.5, y - Math.sin(a) * 4.5, 14); c.fillStyle = '#e7b62f'; c.beginPath(); c.ellipse(gx, gy, 9 * f + 1, 4.5 * f + 1, 0, 0, 7); c.fill(); c.fillStyle = '#fff0a0'; c.fillRect(gx - 2, gy - 2, 2, 1.5); }
+    rbox(c, x, y, a, 4, 13, -7, 7, 8, 16, tc.main, fl);
+    if (u.hs === 'mine') rbox(c, x, y, a, 13, 17, -6, 6, 1, 5, '#8a8f93', fl);
+  } else if (u.type === 'mcv') {
+    rbox(c, x, y, a, -17, 17, -13, -7, 0, 6, '#2e3337', fl);
+    rbox(c, x, y, a, -17, 17, 7, 13, 0, 6, '#2e3337', fl);
+    rbox(c, x, y, a, -16, 16, -10, 10, 3, 10, tc.dark, fl);
+    rbox(c, x, y, a, -15, 5, -9, 9, 10, 19, '#9aa1a6', fl);
+    prism(c, [[0,0]].length && (() => { const co = Math.cos(a), si = Math.sin(a), pt = (f, q) => [x + f * co - q * si, y + f * si + q * co]; return [pt(-15, -9), pt(5, -9), pt(5, 9), pt(-15, 9)]; })(), 19, 21, tc.main, fl, '#9aa1a6');
+    rbox(c, x, y, a, 6, 16, -8, 8, 10, 18, tc.main, fl);
+    line3(c, P(x - Math.cos(a) * 12, y - Math.sin(a) * 12, 22), P(x + Math.cos(a) * 3, y + Math.sin(a) * 3, 25), '#d8a222', 2.5);
+  } else {
+    // infantry: small upright figure
+    const [sx, sy] = P(x, y);
+    const vx = Math.cos(a) - Math.sin(a), vy = (Math.cos(a) + Math.sin(a)) / 2, vl = Math.hypot(vx, vy) || 1, fx = vx / vl, fy = vy / vl;
+    const ph = Math.sin(u.walk * 0.45) * 1.8;
+    c.fillStyle = '#2c3326'; c.fillRect(sx - 2.4, sy - 6 + Math.max(0, ph), 2, 6 - Math.max(0, ph)); c.fillRect(sx + 0.4, sy - 6 + Math.max(0, -ph), 2, 6 - Math.max(0, -ph));
+    const gunBack = fy < 0;
+    const gun = () => {
+      if (u.type === 'rocket') line3(c, [sx - fx * 4, sy - 11 - fy * 4], [sx + fx * 9, sy - 11 + fy * 5], '#5b6340', 3.2);
+      else line3(c, [sx + fx * 1, sy - 8], [sx + fx * 9, sy - 8 + fy * 4], '#1c1f21', 1.6);
+    };
+    if (gunBack) gun();
+    c.fillStyle = fl ? '#fff' : tc.main; roundRect(c, sx - 3, sy - 12, 6, 7, 2); c.fill();
+    c.fillStyle = tc.dark; c.fillRect(sx - 3, sy - 7, 6, 1.5);
+    c.fillStyle = '#d7aa7d'; c.beginPath(); c.arc(sx + fx * 0.6, sy - 14, 2.4, 0, 7); c.fill();
+    c.fillStyle = '#3f4c33'; c.beginPath(); c.arc(sx, sy - 14.6, 2.6, Math.PI, Math.PI * 2); c.fill();
+    if (!gunBack) gun();
+    if (u.fireT > 0) { c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(sx + fx * 11, (u.type === 'rocket' ? sy - 11 : sy - 8) + fy * 5, 2.2, 0, 7); c.fill(); }
+  }
+}
+function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+
+// ---------- buildings
+function drawBuilding(c, b, tc, ghost) {
+  const d = BDEF[b.type], x0 = b.tx * T, y0 = b.ty * T, x1 = x0 + d.w * T, y1 = y0 + d.h * T;
+  const fl = !ghost && b.dmgT > 0.08, t = G ? G.t : 0;
+  const steel = '#8a9196', roof = '#a2a9ad';
+  c.save();
+  if (!ghost && b.bu < 1) {
+    const top = P(x0, y0, 70)[1], bot = P(x1, y1)[1] + 2, cut = bot - (bot - top) * b.bu;
+    c.beginPath(); c.rect(P(x0, y1)[0] - 20, cut, (x1 - x0) + (y1 - y0) + 40, bot - cut + 4); c.clip();
+  }
+  // concrete pad
+  c.save(); groundOn(c); c.fillStyle = '#585c5f'; c.fillRect(x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2); c.fillStyle = '#6b6f72'; c.fillRect(x0 + 2, y0 + 2, x1 - x0 - 4, 2); c.fillRect(x0 + 2, y0 + 2, 2, y1 - y0 - 4); c.restore();
+  switch (b.type) {
+    case 'hq': {
+      boxW(c, x0 + 8, y0 + 10, x1 - 8, y1 - 8, 0, 15, steel, fl);
+      band(c, x0 + 8, y0 + 10, x1 - 8, y1 - 8, 15, 18, tc.main, fl);
+      boxW(c, x0 + 14, y0 + 16, x1 - 20, y1 - 16, 18, 24, roof, fl);
+      hazardY(c, y1 - 8, x0 + 28, x1 - 28, 0, 11);
+      for (let k = 0; k < 4; k++) faceX(c, x1 - 8, y0 + 16 + k * 16, y0 + 26 + k * 16, 7, 11, (k + (t * 2 | 0)) % 4 ? 'rgba(150,225,255,.85)' : '#1b2a33');
+      cyl(c, x1 - 18, y0 + 20, 4, 18, 52, '#d8a222', fl);
+      const ang = Math.sin(t * 0.4) * 0.6 + 2.4;
+      const tip = P(x1 - 18 + Math.cos(ang) * 46, y0 + 20 + Math.sin(ang) * 46, 50);
+      line3(c, P(x1 - 18 - Math.cos(ang) * 10, y0 + 20 - Math.sin(ang) * 10, 51), tip, '#d8a222', 3);
+      line3(c, tip, [tip[0], tip[1] + 18], '#333', 1);
+      c.fillStyle = (t * 2 | 0) % 2 ? '#ff4b3a' : '#5a1a14'; const bl = P(x1 - 18, y0 + 20, 54); c.beginPath(); c.arc(bl[0], bl[1], 2, 0, 7); c.fill();
+      break;
+    }
+    case 'power': {
+      boxW(c, x0 + 4, y0 + 4, x1 - 4, y1 - 4, 0, 7, steel, fl);
+      band(c, x0 + 4, y0 + 4, x1 - 4, y1 - 4, 7, 9, tc.main, fl);
+      cyl(c, x0 + 20, y0 + 20, 11, 9, 32, '#c5c8c0', fl, true);
+      cyl(c, x0 + 44, y0 + 44, 10, 9, 28, '#c5c8c0', fl, true);
+      faceY(c, y1 - 4, x0 + 40, x0 + 52, 1, 6, '#ffd54a');
+      break;
+    }
+    case 'refinery': {
+      boxW(c, x0 + 6, y0 + 6, x0 + 58, y1 - 6, 0, 15, steel, fl);
+      band(c, x0 + 6, y0 + 6, x0 + 58, y1 - 6, 15, 18, tc.main, fl);
+      boxW(c, x0 + 12, y0 + 12, x0 + 52, y1 - 18, 18, 24, roof, fl);
+      faceY(c, y1 - 6, x0 + 18, x0 + 46, 0, 9, '#33383c');
+      faceY(c, y1 - 6, x0 + 18, x0 + 46, 9, 10.5, '#ffbf3a');
+      line3(c, P(x0 + 58, y0 + 20, 12), P(x0 + 70, y0 + 18, 12), '#2d3135', 3);
+      cyl(c, x0 + 76, y0 + 16, 8.5, 0, 26, '#b4b9bc', fl);
+      cyl(c, x0 + 80, y0 + 44, 8.5, 0, 24, '#b4b9bc', fl);
+      break;
+    }
+    case 'barracks': {
+      const ym = (y0 + 8 + y1 - 6) / 2;
+      boxW(c, x0 + 6, y0 + 8, x1 - 6, y1 - 6, 0, 10, '#6f7a55', fl);
+      fillPoly(c, [P(x0 + 6, y0 + 8, 10), P(x1 - 6, y0 + 8, 10), P(x1 - 6, ym, 19), P(x0 + 6, ym, 19)], fl ? '#fff' : '#7d895e');
+      fillPoly(c, [P(x0 + 6, ym, 19), P(x1 - 6, ym, 19), P(x1 - 6, y1 - 6, 10), P(x0 + 6, y1 - 6, 10)], fl ? '#fff' : '#5c6646');
+      fillPoly(c, [P(x1 - 6, y0 + 8, 10), P(x1 - 6, y1 - 6, 10), P(x1 - 6, ym, 19)], fl ? '#fff' : '#4d563a');
+      faceY(c, y1 - 6, x0 + 24, x0 + 40, 0, 8, '#1e2224');
+      faceY(c, y1 - 6, x0 + 6, x1 - 6, 8, 9.5, tc.main);
+      line3(c, P(x0 + 12, y0 + 12, 0), P(x0 + 12, y0 + 12, 36), '#ddd', 1.3);
+      const fp = P(x0 + 12, y0 + 12, 36), wv = Math.sin(t * 5) * 1.5;
+      c.fillStyle = tc.main; c.beginPath(); c.moveTo(fp[0], fp[1]); c.lineTo(fp[0] + 12, fp[1] + 3 + wv); c.lineTo(fp[0], fp[1] + 7); c.fill();
+      break;
+    }
+    case 'factory': {
+      boxW(c, x0 + 6, y0 + 6, x1 - 6, y1 - 6, 0, 24, steel, fl);
+      band(c, x0 + 6, y0 + 6, x1 - 6, y1 - 6, 24, 27, tc.main, fl);
+      c.save(); c.translate(0, -27); c.globalAlpha *= 0.9;
+      for (let k = 0; k < 4; k++) { const xa = x0 + 14 + k * 18; fillPoly(c, [P(xa, y0 + 14), P(xa + 10, y0 + 14), P(xa + 10, y1 - 14), P(xa, y1 - 14)], '#7c8388'); fillPoly(c, [P(xa + 2, y0 + 16), P(xa + 8, y0 + 16), P(xa + 8, y0 + 24), P(xa + 2, y0 + 24)], 'rgba(170,225,255,.45)'); }
+      c.restore();
+      const busy = G && G.teams[b.team] && G.teams[b.team].q.veh.length > 0;
+      faceY(c, y1 - 6, x0 + 22, x1 - 22, 0, 18, '#16191b');
+      if (!busy) hazardY(c, y1 - 6, x0 + 22, x1 - 22, 0, 18); else hazardY(c, y1 - 6, x0 + 22, x1 - 22, 13, 18);
+      cyl(c, x1 - 14, y0 + 14, 3, 27, 44, '#d8a222', fl);
+      line3(c, P(x1 - 14, y0 + 14, 44), P(x0 + 34, y0 + 14, 44), '#d8a222', 2.5);
+      break;
+    }
+    case 'turret': {
+      const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+      prism(c, octo(cx, cy, 14), 0, 6, '#70767b', fl);
+      prism(c, octo(cx, cy, 10), 6, 8, tc.dark, fl);
+      const a = b.tdir, back = Math.cos(a) + Math.sin(a) < 0;
+      const brl = () => { for (const s of [-2.5, 2.5]) line3(c, P(cx + Math.cos(a) * 4 - Math.sin(a) * s, cy + Math.sin(a) * 4 + Math.cos(a) * s, 12), P(cx + Math.cos(a) * 20 - Math.sin(a) * s, cy + Math.sin(a) * 20 + Math.cos(a) * s, 12), '#2a2e31', 2.2); };
+      if (back) brl();
+      rbox(c, cx, cy, a, -7, 7, -6, 6, 8, 15, tc.main, fl);
+      if (!back) brl();
+      if (b.fireT > 0) { const fp = P(cx + Math.cos(a) * 23, cy + Math.sin(a) * 23, 12); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fp[0], fp[1], 4, 0, 7); c.fill(); b.fireT -= 1 / 60; }
+      break;
+    }
+  }
+  c.restore();
+  if (!ghost && b.hp < b.maxhp * 0.25) {
+    const fl2 = (Math.sin(t * 17 + b.id) + 1) / 2, [fx, fy] = P(b.x, b.y, d.H * 0.8);
+    c.fillStyle = `rgba(255,${120 + fl2 * 80 | 0},40,.85)`; c.beginPath(); c.arc(fx - 6, fy, 3 + fl2 * 2.5, 0, 7); c.fill();
+  }
+}
+
+// ---------- overlays
+function drawFootSel(b) {
+  ctx.strokeStyle = '#ffd86b'; ctx.lineWidth = 1.5;
+  ctx.strokeRect(b.tx * T + 1, b.ty * T + 1, b.w * T - 2, b.h * T - 2);
+}
+function drawSelU(u) {
+  const h = UH[u.type] || 12, [sx, sy] = P(u.x, u.y), r = u.r + 6;
+  const x = sx - r, y = sy - h - 4, w = r * 2, hh = h + 8, k = Math.min(w, hh) * 0.3;
+  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x, y + k); ctx.lineTo(x, y); ctx.lineTo(x + k, y);
+  ctx.moveTo(x + w - k, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + k);
+  ctx.moveTo(x + w, y + hh - k); ctx.lineTo(x + w, y + hh); ctx.lineTo(x + w - k, y + hh);
+  ctx.moveTo(x + k, y + hh); ctx.lineTo(x, y + hh); ctx.lineTo(x, y + hh - k);
+  ctx.stroke();
+  drawHp(u);
+}
+function drawHp(e) {
+  const f = clamp(e.hp / e.maxhp, 0, 1);
+  let x, y, w;
+  if (e.kind === 'b') { w = (e.w + e.h) * T * 0.55; const p = P(e.x, e.y, BDEF[e.type].H + 10); x = p[0] - w / 2; y = Math.min(p[1], P(e.tx * T, e.ty * T, BDEF[e.type].H)[1] - 6); }
+  else { w = Math.max(18, e.r * 2.6); const p = P(e.x, e.y, (UH[e.type] || 12) + 7); x = p[0] - w / 2; y = p[1]; }
+  ctx.fillStyle = 'rgba(0,0,0,.75)'; ctx.fillRect(x - 1, y - 1, w + 2, 4.5);
+  ctx.fillStyle = f > 0.55 ? '#4fe36f' : f > 0.28 ? '#ffd23a' : '#ff4b3a';
+  const segs = Math.max(4, Math.round(w / 5)), sw = w / segs;
+  for (let k = 0; k < segs; k++) if (k / segs < f) ctx.fillRect(x + k * sw, y, sw - 0.8, 2.5);
+}
+function drawFx(f) {
+  const p = f.t / f.life, [sx, sy] = P(f.x, f.y, f.z || 0);
+  switch (f.k) {
+    case 'tracer': { const [ex, ey] = P(f.x2, f.y2, f.z2 || 0); ctx.strokeStyle = `rgba(255,236,160,${1 - p})`; ctx.lineWidth = 1.1; ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke(); break; }
+    case 'flash': ctx.fillStyle = `rgba(255,240,170,${1 - p})`; ctx.beginPath(); ctx.arc(sx, sy, f.s * (1 - p * .5), 0, 7); ctx.fill(); break;
+    case 'boom': {
+      const r = f.s * (0.5 + p * 1.4);
+      const g = ctx.createRadialGradient(sx, sy - r * 0.3, 0, sx, sy - r * 0.3, r);
+      g.addColorStop(0, `rgba(255,250,210,${1 - p})`); g.addColorStop(0.35, `rgba(255,170,50,${(1 - p) * 0.9})`); g.addColorStop(1, 'rgba(120,40,10,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy - r * 0.3, r, 0, 7); ctx.fill(); break;
+    }
+    case 'spark': ctx.fillStyle = f.c; ctx.globalAlpha = 1 - p; ctx.fillRect(sx - 1, sy - 1, 2, 2); ctx.globalAlpha = 1; break;
+    case 'smoke': case 'vapor': {
+      const a = f.k === 'vapor' ? (1 - p) * 0.4 : (1 - p) * 0.45;
+      ctx.fillStyle = f.k === 'vapor' ? `rgba(235,240,245,${a})` : `rgba(70,70,70,${a})`;
+      ctx.beginPath(); ctx.arc(sx, sy, f.s * (1 + p * 1.6), 0, 7); ctx.fill(); break;
+    }
+    case 'fire': ctx.fillStyle = `rgba(255,${150 - p * 100 | 0},40,${1 - p})`; ctx.beginPath(); ctx.arc(sx, sy, f.s * (1 - p * .5), 0, 7); ctx.fill(); break;
+    case 'body': {
+      if (!vis[tileOf(f.x, f.y)] && f.team !== 0) break;
+      ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
+      ctx.fillStyle = 'rgba(90,20,15,.5)'; ctx.beginPath(); ctx.ellipse(sx, sy, 5, 2.5, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = TEAM[f.team].dark; ctx.fillRect(sx - 4, sy - 2.5, 8, 3.5); ctx.fillStyle = '#c99b70'; ctx.beginPath(); ctx.arc(sx + 5, sy - 1, 1.8, 0, 7); ctx.fill();
+      ctx.globalAlpha = 1; break;
+    }
+  }
+}
+function drawProj(p) {
+  const [sx, sy] = P(p.x, p.y, p.z);
+  if (p.k === 'shell') { ctx.fillStyle = '#ffe9a0'; ctx.beginPath(); ctx.arc(sx, sy, 1.9, 0, 7); ctx.fill(); }
+  else {
+    const [bx, by] = P(p.x - Math.cos(p.a) * 7, p.y - Math.sin(p.a) * 7, p.z);
+    line3(ctx, [bx, by], [sx, sy], '#d9dcd5', 2); ctx.fillStyle = '#ff9a3a'; ctx.beginPath(); ctx.arc(bx, by, 1.8, 0, 7); ctx.fill();
+  }
+  const [gx, gy] = P(p.x, p.y); ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(gx, gy, 2.5, 1.2, 0, 0, 7); ctx.fill();
+}
+function drawMark(m) {
+  const p = (performance.now() - m.t0) / 500; if (p > 1) return;
+  ctx.strokeStyle = m.c; ctx.globalAlpha = 1 - p; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(m.x, m.y, 14 * (1 - p * .6), 0, 7); ctx.stroke(); ctx.globalAlpha = 1;
+}
+function drawGhostTiles() {
+  const tm = G.teams[0], d = BDEF[placing.type];
+  if (placing.tx == null) return;
+  const ok = canPlace(tm, placing.type, placing.tx, placing.ty);
+  for (let y = 0; y < d.h; y++) for (let x = 0; x < d.w; x++) {
+    const xx = placing.tx + x, yy = placing.ty + y, i = yy * MW + xx;
+    const bad = yy >= MH || xx >= MW || terr[i] || ore[i] || bmap[i] >= 0;
+    ctx.fillStyle = (!ok || bad) ? 'rgba(255,70,60,.45)' : 'rgba(90,255,120,.35)';
+    ctx.fillRect(xx * T + 1, yy * T + 1, T - 2, T - 2);
+  }
+  ctx.strokeStyle = ok ? '#7dff9a' : '#ff5a4a'; ctx.lineWidth = 2;
+  ctx.strokeRect(placing.tx * T, placing.ty * T, d.w * T, d.h * T);
+}
+
+// --- minimap (drawn as a diamond, like the battlefield)
+const mini = document.getElementById('mini'), mctx = mini.getContext('2d');
+let miniT = 0;
+const miniS = () => mini.width / ISO_W;
+function renderMini() {
+  const W = mini.width, H = mini.height, s = miniS();
+  mctx.setTransform(1, 0, 0, 1, 0, 0); mctx.fillStyle = '#05070a'; mctx.fillRect(0, 0, W, H);
+  mctx.setTransform(s * T, s * T * 0.5, -s * T, s * T * 0.5, MH * T * s, 0);
+  mctx.imageSmoothingEnabled = false;
+  mctx.drawImage(miniBase, 0, 0);
+  mctx.fillStyle = '#e2b33a';
+  for (let i = 0; i < N; i++) if (ore[i] > 30 && expl[i]) mctx.fillRect(i % MW, i / MW | 0, 1, 1);
+  for (const e of G.ents) {
+    if (!seen(e)) continue;
+    mctx.fillStyle = TEAM[e.team].mini;
+    if (e.kind === 'b') mctx.fillRect(e.tx, e.ty, e.w, e.h);
+    else mctx.fillRect(e.x / T - 0.7, e.y / T - 0.7, 1.4, 1.4);
+  }
+  mctx.imageSmoothingEnabled = true;
+  mctx.drawImage(fogC, 0, 0);
+  mctx.setTransform(1, 0, 0, 1, 0, 0);
+  mctx.strokeStyle = '#fff'; mctx.lineWidth = 1;
+  mctx.strokeRect((cam.x + MH * T) * s + .5, cam.y * s + .5, view.w / cam.z * s, view.h / cam.z * s);
+}
+
+// ============================================================ input
+let boxMode = false, boxDrag = null, gesture = null, lastTap = null, hoverW = null;
+const marks = [];
+const pointers = new Map();
+const boxBtn = document.getElementById('boxBtn');
+function updateBoxBtn() { boxBtn.setAttribute('aria-pressed', String(boxMode)); }
+cv.addEventListener('contextmenu', e => e.preventDefault());
+cv.addEventListener('pointerdown', e => {
+  if (!G || paused) return;
+  audioInit();
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    gesture = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, w0: s2w((a.x + b.x) / 2, (a.y + b.y) / 2) };
+    boxDrag = null;
+  } else if (pointers.size === 1) {
+    gesture = { type: 'pending', sx: e.offsetX, sy: e.offsetY, button: e.button, mouse: e.pointerType === 'mouse', cx: cam.x, cy: cam.y };
+  }
+});
+cv.addEventListener('pointermove', e => {
+  if (!G) return;
+  if (e.pointerType === 'mouse') { hoverW = s2w(e.offsetX, e.offsetY); if (placing && !pointers.size) ghostAt(hoverW); }
+  const p = pointers.get(e.pointerId); if (!p) return;
+  p.x = e.offsetX; p.y = e.offsetY;
+  if (!gesture) return;
+  if (gesture.type === 'pinch' && pointers.size >= 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    cam.z = gesture.z0 * d / Math.max(20, gesture.d0); clampCam();
+    cam.x = gesture.w0.x - mx / cam.z; cam.y = gesture.w0.y - my / cam.z; clampCam();
+    return;
+  }
+  const dx = e.offsetX - gesture.sx, dy = e.offsetY - gesture.sy;
+  if (gesture.type === 'pending' && Math.hypot(dx, dy) > 9) {
+    if (placing && !gesture.mouse) gesture.type = 'pan';
+    else if (gesture.mouse) gesture.type = gesture.button === 0 && !placing ? 'box' : 'pan';
+    else gesture.type = boxMode ? 'box' : 'pan';
+    if (gesture.type === 'box') boxDrag = { x0: gesture.sx, y0: gesture.sy, x1: e.offsetX, y1: e.offsetY };
+  }
+  if (gesture.type === 'pan') { cam.x = gesture.cx - dx / cam.z; cam.y = gesture.cy - dy / cam.z; clampCam(); }
+  else if (gesture.type === 'box') { boxDrag.x1 = e.offsetX; boxDrag.y1 = e.offsetY; }
+});
+function endPointer(e) {
+  if (!pointers.has(e.pointerId)) return;
+  pointers.delete(e.pointerId);
+  if (!gesture) return;
+  if (gesture.type === 'pending' && e.type === 'pointerup') tap(gesture.sx, gesture.sy, gesture.button);
+  else if (gesture.type === 'box' && boxDrag) finishBox();
+  if (gesture.type === 'pinch') { if (!pointers.size) gesture = null; return; }
+  gesture = null; boxDrag = null;
+}
+cv.addEventListener('pointerup', endPointer);
+cv.addEventListener('pointercancel', endPointer);
+cv.addEventListener('wheel', e => {
+  e.preventDefault(); if (!G) return;
+  const w = s2w(e.offsetX, e.offsetY);
+  cam.z *= Math.exp(-e.deltaY * 0.0015); clampCam();
+  cam.x = w.x - e.offsetX / cam.z; cam.y = w.y - e.offsetY / cam.z; clampCam();
+}, { passive: false });
+const keys = new Set();
+addEventListener('keydown', e => {
+  keys.add(e.key.toLowerCase());
+  if (e.key === 'Escape') { if (placing) endPlacing(); else deselect(); }
+  if (e.key === ' ' && G && !G.over) { e.preventDefault(); togglePause(); }
+});
+addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+function pick(sx, sy, own) {
+  const { ix, iy } = s2i(sx, sy);
+  let best = null, bd = 1e9;
+  const tol = Math.max(8, 12 / cam.z);
+  for (const e of G.ents) {
+    if (!seen(e) || (own !== undefined && (e.team === 0) !== own)) continue;
+    if (e.kind === 'b') {
+      // the click can land anywhere on the building's upright body
+      const H = BDEF[e.type].H;
+      for (let z = 0; z <= H; z += 4) {
+        const w = i2w(ix, iy + z);
+        if (w.x >= e.tx * T && w.x < (e.tx + e.w) * T && w.y >= e.ty * T && w.y < (e.ty + e.h) * T) { if (bd > 40) { best = e; bd = 40; } break; }
+      }
+    } else {
+      if (e.team !== 0 && !vis[tileOf(e.x, e.y)]) continue;
+      const [ux, uy] = P(e.x, e.y, (UH[e.type] || 12) * 0.45);
+      const d = Math.hypot(ux - ix, (uy - iy) * 1.2); if (d < e.r + tol && d < bd) { bd = d; best = e; }
+    }
+  }
+  return best;
+}
+function tap(sx, sy, button) {
+  const w = s2w(sx, sy), tm = G.teams[0];
+  if (button === 2) { if (placing) endPlacing(); else deselect(); return; }
+  if (placing) {
+    const d = BDEF[placing.type], tx = Math.floor(w.x / T - d.w / 2 + 0.5), ty = Math.floor(w.y / T - d.h / 2 + 0.5);
+    if ((placing.tx === tx && placing.ty === ty) || gesture?.mouse) {
+      placing.tx = tx; placing.ty = ty;
+      tryPlace();
+    } else { placing.tx = tx; placing.ty = ty; sfx('click'); }
+    return;
+  }
+  const units = [...sel].filter(u => u.kind === 'u');
+  const own = pick(sx, sy, true), foe = pick(sx, sy, false);
+  if (foe && units.some(u => UDEF[u.type].weapon)) {
+    orderAttack(units, foe); addMark(foe.x, foe.y, '#ff5a4a'); sfx('ack'); return;
+  }
+  if (own) {
+    const now = performance.now();
+    if (own.type === 'mcv' && sel.size === 1 && sel.has(own)) { deploy(own); return; }
+    if (own.kind === 'u') {
+      if (lastTap && lastTap.id === own.id && now - lastTap.t < 380) {
+        selectOnly(G.ents.filter(e => e.team === 0 && e.type === own.type && e.kind === 'u' && onScreen(e)));
+      } else selectOnly([own]);
+      lastTap = { id: own.id, t: now };
+    } else { sel.clear(); selB = own; refreshSelUI(); }
+    sfx('click');
+    return;
+  }
+  if (units.length) {
+    const ti = tileOf(w.x, w.y);
+    const harvs = units.filter(u => u.type === 'harv'), others = units.filter(u => u.type !== 'harv');
+    if (ore[ti] && harvs.length) orderHarvest(harvs, ti); else if (harvs.length) orderMove(harvs, w.x, w.y);
+    if (others.length) orderMove(others, w.x, w.y, 'move');
+    addMark(w.x, w.y, '#7dff9a'); sfx('ack');
+    return;
+  }
+  if (selB && selB.team === 0 && (selB.type === 'barracks' || selB.type === 'factory')) {
+    tm.rally[selB.type === 'barracks' ? 'inf' : 'veh'] = { x: w.x, y: w.y };
+    addMark(w.x, w.y, '#ffd86b'); sfx('click'); return;
+  }
+  deselect();
+}
+function addMark(x, y, c) { marks.push({ x, y, c, t0: performance.now() }); if (marks.length > 8) marks.shift(); }
+function finishBox() {
+  const a = s2i(Math.min(boxDrag.x0, boxDrag.x1), Math.min(boxDrag.y0, boxDrag.y1)), b = s2i(Math.max(boxDrag.x0, boxDrag.x1), Math.max(boxDrag.y0, boxDrag.y1));
+  let got = G.ents.filter(e => { if (e.team !== 0 || e.kind !== 'u') return false; const [ix, iy] = P(e.x, e.y, 6); return ix >= a.ix && ix <= b.ix && iy >= a.iy && iy <= b.iy; });
+  if (got.some(u => u.type !== 'harv' && u.type !== 'mcv')) got = got.filter(u => u.type !== 'harv' && u.type !== 'mcv');
+  if (got.length) { selectOnly(got); sfx('click'); }
+  boxDrag = null;
+  if (boxMode && !gesture?.mouse) { boxMode = false; updateBoxBtn(); }
+}
+function selectOnly(list) { sel = new Set(list); selB = null; refreshSelUI(); }
+function deselect() { sel.clear(); selB = null; refreshSelUI(); }
+const selInfo = document.getElementById('selInfo'), desBtn = document.getElementById('desBtn'), deployBtn = document.getElementById('deployBtn');
+deployBtn.addEventListener('click', () => { const u = [...sel][0]; if (u && u.type === 'mcv') deploy(u); });
+function refreshSelUI() {
+  for (const e of [...sel]) if (!alive(e)) sel.delete(e);
+  const n = sel.size;
+  desBtn.hidden = !n && !selB;
+  deployBtn.hidden = !(n === 1 && [...sel][0].type === 'mcv');
+  if (n) {
+    const c = {}; for (const u of sel) c[u.type] = (c[u.type] || 0) + 1;
+    selInfo.textContent = Object.entries(c).map(([t, k]) => `${UDEF[t].name}×${k}`).join('  ');
+    selInfo.hidden = false;
+  } else if (selB) {
+    selInfo.textContent = BDEF[selB.type].name + ((selB.type === 'barracks' || selB.type === 'factory') && selB.team === 0 ? ' · 点地面设集结点' : '');
+    selInfo.hidden = false;
+  } else selInfo.hidden = true;
+}
+boxBtn.addEventListener('click', () => { boxMode = !boxMode; updateBoxBtn(); });
+document.getElementById('allBtn').addEventListener('click', () => {
+  const army = G.ents.filter(e => e.team === 0 && e.kind === 'u' && e.type !== 'harv' && e.type !== 'mcv');
+  selectOnly(army); sfx('click');
+  if (army.length) say(`选中 ${army.length} 个作战单位`);
+});
+desBtn.addEventListener('click', deselect);
+
+// placement
+const placeBar = document.getElementById('placeBar');
+function beginPlacing() {
+  const tm = G.teams[0]; if (!tm.bq || !tm.bq.ready) return;
+  const d = BDEF[tm.bq.type];
+  placing = { type: tm.bq.type, tx: null, ty: null };
+  // start the ghost at the nearest valid spot to the screen centre
+  const c = s2w(view.w / 2, view.h / 2); let best = null, bd = 1e9;
+  for (let y = 1; y < MH - d.h; y++) for (let x = 1; x < MW - d.w; x++) {
+    const dd = Math.hypot((x + d.w / 2) * T - c.x, (y + d.h / 2) * T - c.y); if (dd > bd || dd > 18 * T) continue;
+    if (canPlace(tm, placing.type, x, y, 1)) { bd = dd; best = [x, y]; }
+  }
+  if (best) { placing.tx = best[0]; placing.ty = best[1]; if (!onScreen({ x: (best[0] + d.w / 2) * T, y: (best[1] + d.h / 2) * T })) centerOn((best[0] + d.w / 2) * T, (best[1] + d.h / 2) * T); }
+  placeBar.hidden = false;
+  sel.clear(); selB = null; refreshSelUI();
+}
+function ghostAt(w) { const d = BDEF[placing.type]; placing.tx = Math.floor(w.x / T - d.w / 2 + 0.5); placing.ty = Math.floor(w.y / T - d.h / 2 + 0.5); }
+function tryPlace() {
+  const tm = G.teams[0];
+  if (placing.tx != null && placeBuilding(tm, placing.tx, placing.ty)) { endPlacing(); buildGrid(); }
+  else { say('不能放在这里', true); sfx('deny'); }
+}
+function endPlacing() { placing = null; placeBar.hidden = true; }
+document.getElementById('placeOk').addEventListener('click', tryPlace);
+document.getElementById('placeNo').addEventListener('click', endPlacing);
+
+// minimap navigation
+let miniDrag = false;
+function miniGo(e) { const r = mini.getBoundingClientRect(), s = miniS(); const ix = (e.clientX - r.left) / r.width * mini.width / s - MH * T, iy = (e.clientY - r.top) / r.height * mini.height / s; cam.x = ix - view.w / cam.z / 2; cam.y = iy - view.h / cam.z / 2; clampCam(); }
+mini.addEventListener('pointerdown', e => { if (!G) return; miniDrag = true; mini.setPointerCapture(e.pointerId); miniGo(e); });
+mini.addEventListener('pointermove', e => { if (miniDrag) miniGo(e); });
+mini.addEventListener('pointerup', () => { miniDrag = false; });
+mini.addEventListener('pointercancel', () => { miniDrag = false; });
+
+// ============================================================ sidebar
+const grid = document.getElementById('grid'), tabB = document.getElementById('tabB'), tabU = document.getElementById('tabU');
+let curTab = 'b', btns = [];
+tabB.addEventListener('click', () => setTab('b'));
+tabU.addEventListener('click', () => setTab('u'));
+function setTab(t) { curTab = t; tabB.setAttribute('aria-selected', String(t === 'b')); tabU.setAttribute('aria-selected', String(t === 'u')); (t === 'b' ? tabB : tabU).classList.remove('ping'); buildGrid(); }
+const iconCache = {};
+function iconFor(type) {
+  if (iconCache[type]) return iconCache[type];
+  const c = document.createElement('canvas'); c.width = 128; c.height = 96;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 96); g.addColorStop(0, '#2b3a44'); g.addColorStop(1, '#141b20');
+  x.fillStyle = g; x.fillRect(0, 0, 128, 96);
+  x.strokeStyle = 'rgba(255,255,255,.05)'; for (let k = 0; k < 128; k += 8) { x.beginPath(); x.moveTo(k, 0); x.lineTo(k, 96); x.stroke(); }
+  if (BDEF[type]) {
+    const d = BDEF[type], top = type === 'hq' ? 56 : d.H + 6, wpx = (d.w + d.h) * T, hpx = (d.w + d.h) * T / 2 + top;
+    const s = Math.min(118 / wpx, 88 / hpx, 1.6);
+    x.translate(64 - (d.w - d.h) * T / 2 * s, 48 - (hpx / 2 - top) * s); x.scale(s, s);
+    drawBuilding(x, { type, tx: 0, ty: 0, x: d.w * T / 2, y: d.h * T / 2, team: 0, bu: 1, tdir: -2.3, hp: 1, maxhp: 1, fireT: 0 }, TEAM[0], true);
+  } else {
+    const s = { rifle: 3.4, rocket: 3.4, tank: 2.3, harv: 2, mcv: 1.7 }[type];
+    x.translate(64, 56 + (UDEF[type].cat === 'inf' ? 22 : 0)); x.scale(s, s);
+    drawUnit(x, { type, x: 0, y: 0, dir: 0.6, tdir: 0.4, walk: 3, carry: 500, order: { type: 'idle' }, stuckT: 0, fireT: 0, r: UDEF[type].r }, TEAM[0]);
+  }
+  return iconCache[type] = c;
+}
+function buildGrid() {
+  grid.textContent = ''; btns = [];
+  const list = curTab === 'b' ? BUILD_LIST : UNIT_LIST;
+  for (const type of list) {
+    const def = BDEF[type] || UDEF[type];
+    const b = document.createElement('button'); b.className = 'bb'; b.type = 'button';
+    b.setAttribute('aria-label', def.name);
+    const ic = iconFor(type), cc = document.createElement('canvas'); cc.width = 128; cc.height = 96; cc.getContext('2d').drawImage(ic, 0, 0);
+    b.append(cc);
+    b.insertAdjacentHTML('beforeend', `<div class="ov"></div><span class="ct">$${def.cost}</span><span class="nm">${def.name}</span><span class="q" hidden></span><span class="st"></span>`);
+    let lp = null, longDone = false;
+    b.addEventListener('pointerdown', () => { audioInit(); longDone = false; lp = setTimeout(() => { longDone = true; cancelItem(type); }, 480); });
+    const clr = () => { clearTimeout(lp); };
+    b.addEventListener('pointerup', clr); b.addEventListener('pointerleave', clr); b.addEventListener('pointercancel', clr);
+    b.addEventListener('contextmenu', e => { e.preventDefault(); clr(); if (!longDone) cancelItem(type); longDone = true; });
+    b.addEventListener('click', () => { if (longDone) { longDone = false; return; } clickItem(type); });
+    grid.append(b); btns.push({ el: b, type, ov: b.querySelector('.ov'), q: b.querySelector('.q'), st: b.querySelector('.st'), last: '' });
+  }
+  updateGrid();
+}
+function clickItem(type) {
+  if (!G || G.over) return;
+  const tm = G.teams[0];
+  if (BDEF[type]) {
+    if (tm.bq && tm.bq.type === type && tm.bq.ready) { beginPlacing(); sfx('click'); return; }
+    if (tm.bq) { sfx('deny'); say(tm.bq.ready ? '先放置已建好的建筑' : '正在建造其他建筑', true); return; }
+    if (!canBuild(tm, type)) { sfx('deny'); say(lockText(type), true); return; }
+    startBuilding(tm, type); sfx('click');
+  } else {
+    if (!canBuild(tm, type)) { sfx('deny'); say(lockText(type), true); return; }
+    if (queueUnit(tm, type)) sfx('click'); else sfx('deny');
+  }
+  updateGrid();
+}
+function cancelItem(type) {
+  if (!G) return; const tm = G.teams[0];
+  if (BDEF[type]) { if (tm.bq && tm.bq.type === type) { cancelBuilding(tm); sfx('cancel'); say('已取消'); } }
+  else if (cancelUnit(tm, type)) sfx('cancel');
+  updateGrid();
+}
+function lockText(type) {
+  const d = BDEF[type] || UDEF[type];
+  const need = [...(d.req || []), ...(d.from ? [d.from] : [])].find(r => !G.teams[0].cnt[r]) || 'hq';
+  return '需要先建造' + BDEF[need].name;
+}
+function updateGrid() {
+  if (!G) return; const tm = G.teams[0];
+  for (const b of btns) {
+    let p = 0, st = '', cls = 'bb', q = 0;
+    const locked = !canBuild(tm, b.type);
+    if (BDEF[b.type]) {
+      if (tm.bq && tm.bq.type === b.type) { p = tm.bq.prog; if (tm.bq.ready) { st = '就绪'; cls += ' ready'; p = 1; } }
+      else if (tm.bq) cls += ' busy';
+    } else {
+      const cat = UDEF[b.type].cat, qq = tm.q[cat];
+      q = qq.filter(t => t === b.type).length;
+      if (qq[0] === b.type && tm.qp[cat]) p = tm.qp[cat].prog;
+    }
+    if (locked && !(BDEF[b.type] && tm.bq && tm.bq.type === b.type)) cls += ' locked';
+    const key = cls + '|' + (p * 60 | 0) + '|' + st + '|' + q;
+    if (key === b.last) continue; b.last = key;
+    b.el.className = cls;
+    b.ov.style.setProperty('--p', (p > 0 && p < 1) ? p.toFixed(3) : (p >= 1 ? 1 : 1));
+    b.ov.style.display = p > 0 && p < 1 ? '' : 'none';
+    b.st.textContent = st;
+    b.q.hidden = !q; b.q.textContent = q;
+  }
+}
+const credEl = document.getElementById('cred'), clockEl = document.getElementById('clock'), pwrEl = document.getElementById('pwr'), pwrTxt = document.getElementById('pwrTxt');
+let shownCred = 0;
+function updateHUD(dt) {
+  const tm = G.teams[0];
+  const diff = tm.credits - shownCred; shownCred += Math.abs(diff) < 2 ? diff : diff * Math.min(1, dt * 8);
+  credEl.textContent = '$' + Math.floor(shownCred);
+  const s = G.t | 0; clockEl.textContent = String(s / 60 | 0).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  const max = Math.max(tm.powerP, tm.powerU, 100);
+  pwrEl.querySelector('i').style.width = (tm.powerU / max * 100) + '%';
+  pwrEl.querySelector('b').style.left = (tm.powerP / max * 100) + '%';
+  pwrEl.classList.toggle('low', tm.low);
+  pwrTxt.textContent = `${tm.powerP - tm.powerU}`;
+}
+
+// messages
+const msgBox = document.getElementById('msgs');
+function say(text, bad) {
+  if (G && G.teams[0].ai) return;
+  const last = msgBox.lastElementChild; if (last && last.textContent === text) return;
+  const d = document.createElement('div'); d.textContent = text; if (bad) d.className = 'bad';
+  msgBox.append(d); while (msgBox.children.length > 3) msgBox.firstElementChild.remove();
+  setTimeout(() => d.remove(), 2600);
+}
+
+// ============================================================ audio (all synthesized)
+let AC = null, master = null, noiseBuf = null;
+const lastSnd = {};
+function audioInit() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); master.gain.value = 0.55; master.connect(AC.destination);
+    noiseBuf = AC.createBuffer(1, AC.sampleRate, AC.sampleRate);
+    const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  } catch (e) { AC = null; }
+}
+function sfx(name, x, y) {
+  if (!AC || AC.state !== 'running' || (G && G.demo)) return;
+  const now = AC.currentTime;
+  const gap = { rifle: 0.06, cannon: 0.08, rocket: 0.08, boom: 0.07, die: 0.1 }[name] || 0.03;
+  if (now - (lastSnd[name] || 0) < gap) return; lastSnd[name] = now;
+  let vol = 1;
+  if (x !== undefined) {
+    const cx = cam.x + view.w / cam.z / 2, cy = cam.y + view.h / cam.z / 2;
+    const d = Math.hypot(x - cx, y - cy) / (view.w / cam.z);
+    vol = clamp(1.2 - d, 0.08, 1);
+  }
+  const out = AC.createGain(); out.gain.value = vol; out.connect(master);
+  const noise = (dur, type, f0, f1, g0, q = 1) => {
+    const s = AC.createBufferSource(); s.buffer = noiseBuf; s.playbackRate.value = 1;
+    const f = AC.createBiquadFilter(); f.type = type; f.Q.value = q; f.frequency.setValueAtTime(f0, now); f.frequency.exponentialRampToValueAtTime(f1, now + dur);
+    const g = AC.createGain(); g.gain.setValueAtTime(g0, now); g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    s.connect(f); f.connect(g); g.connect(out); s.start(now, Math.random() * 0.5); s.stop(now + dur + 0.02);
+  };
+  const tone = (dur, type, f0, f1, g0, delay = 0) => {
+    const o = AC.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, now + delay); o.frequency.exponentialRampToValueAtTime(f1, now + delay + dur);
+    const g = AC.createGain(); g.gain.setValueAtTime(0.0001, now + delay); g.gain.linearRampToValueAtTime(g0, now + delay + 0.01); g.gain.exponentialRampToValueAtTime(0.001, now + delay + dur);
+    o.connect(g); g.connect(out); o.start(now + delay); o.stop(now + delay + dur + 0.02);
+  };
+  switch (name) {
+    case 'rifle': noise(0.07, 'bandpass', 2400, 900, 0.35, 1.2); break;
+    case 'cannon': noise(0.28, 'lowpass', 1400, 120, 0.7); tone(0.2, 'sine', 140, 45, 0.5); break;
+    case 'rocket': noise(0.35, 'bandpass', 700, 2600, 0.35, 2); break;
+    case 'boom': noise(0.6, 'lowpass', 900, 60, 0.8); tone(0.4, 'sine', 90, 30, 0.6); break;
+    case 'bigboom': noise(1.2, 'lowpass', 700, 40, 1); tone(0.9, 'sine', 70, 22, 0.8); break;
+    case 'die': noise(0.12, 'bandpass', 600, 300, 0.2, 3); break;
+    case 'click': tone(0.04, 'square', 1200, 900, 0.08); break;
+    case 'ack': tone(0.05, 'square', 700, 700, 0.07); tone(0.05, 'square', 1050, 1050, 0.07, 0.06); break;
+    case 'deny': tone(0.16, 'square', 180, 140, 0.12); break;
+    case 'cancel': tone(0.1, 'triangle', 600, 300, 0.15); break;
+    case 'ready': tone(0.12, 'triangle', 660, 660, 0.2); tone(0.18, 'triangle', 990, 990, 0.2, 0.12); break;
+    case 'unit': tone(0.08, 'triangle', 520, 520, 0.12); tone(0.1, 'triangle', 780, 780, 0.12, 0.08); break;
+    case 'place': noise(0.25, 'lowpass', 500, 80, 0.6); tone(0.2, 'sine', 110, 50, 0.4); break;
+    case 'alert': for (let k = 0; k < 3; k++) tone(0.12, 'sawtooth', 880, 620, 0.09, k * 0.18); break;
+  }
+}
+
+// ============================================================ screens & loop
+const titleEl = document.getElementById('title'), pauseEl = document.getElementById('pause'), endEl = document.getElementById('end');
+document.querySelectorAll('#diff button').forEach(b => b.addEventListener('click', () => {
+  difficulty = +b.dataset.d;
+  document.querySelectorAll('#diff button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+  try { localStorage.setItem('coldfront.diff', difficulty); } catch (e) {}
+}));
+try { const d = localStorage.getItem('coldfront.diff'); if (d !== null) document.querySelector(`#diff button[data-d="${d}"]`)?.click(); } catch (e) {}
+function start() {
+  audioInit();
+  titleEl.hidden = true; endEl.hidden = true; pauseEl.hidden = true;
+  newGame(); paused = false; setTab('b');
+}
+document.getElementById('startBtn').addEventListener('click', start);
+document.getElementById('againBtn').addEventListener('click', start);
+document.getElementById('restartBtn').addEventListener('click', start);
+const toTitle = () => { pauseEl.hidden = true; endEl.hidden = true; titleEl.hidden = false; if (!G || !G.demo) startDemo(); };
+document.getElementById('quitBtn').addEventListener('click', toTitle);
+document.getElementById('endQuitBtn').addEventListener('click', toTitle);
+document.getElementById('menuBtn').addEventListener('click', togglePause);
+document.getElementById('resumeBtn').addEventListener('click', togglePause);
+function togglePause() { if (!G || G.over || G.demo) return; paused = !paused; pauseEl.hidden = !paused; }
+function showEnd() {
+  if (!G || !G.over) return;
+  if (G.demo) { startDemo(); return; }
+  paused = true;
+  const tm = G.teams[0], s = G.t | 0;
+  document.getElementById('endTitle').textContent = G.over === 'win' ? '胜利' : '战败';
+  document.getElementById('endTitle').className = G.over === 'win' ? 'win' : 'lose';
+  document.getElementById('endStats').innerHTML =
+    `<span>用时</span><b>${s / 60 | 0} 分 ${s % 60} 秒</b>` +
+    `<span>消灭敌军</span><b>${tm.kills}</b>` +
+    `<span>损失单位</span><b>${tm.lostU}</b>` +
+    `<span>损失建筑</span><b>${tm.lostB}</b>` +
+    `<span>采矿收入</span><b>$${tm.mined}</b>`;
+  endEl.hidden = false;
+}
+
+addEventListener('resize', () => { if (G) resize(); });
+let lastT = performance.now(), acc = 0, uiT = 0;
+function frame(now) {
+  requestAnimationFrame(frame);
+  const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
+  if (!G) return;
+  if (!paused) {
+    acc += dt;
+    let n = 0; while (acc >= DT && n < 4) { step(); acc -= DT; n++; }
+    if (n === 4) acc = 0;
+    // keyboard panning
+    const sp = 700 / cam.z * dt;
+    if (keys.has('arrowleft') || keys.has('a')) cam.x -= sp;
+    if (keys.has('arrowright') || keys.has('d')) cam.x += sp;
+    if (keys.has('arrowup') || keys.has('w')) cam.y -= sp;
+    if (keys.has('arrowdown') || keys.has('s')) cam.y += sp;
+    clampCam();
+    if (G.demo) demoCam(dt);
+  }
+  render();
+  uiT -= dt;
+  if (uiT <= 0) { uiT = 0.1; updateGrid(); refreshSelUI(); }
+  updateHUD(dt);
+  miniT -= dt; if (miniT <= 0) { miniT = 0.25; renderMini(); }
+}
+requestAnimationFrame(frame);
+
+// a live AI-vs-AI battle runs behind the title screen
+function startDemo() {
+  autoPlayer = true; newGame(); autoPlayer = false; G.demo = true; paused = false;
+  cam.z = defaultZoom() * 0.8; clampCam();
+}
+function demoCam(dt) {
+  const army = G.ents.filter(e => e.kind === 'u' && e.type !== 'harv');
+  if (!army.length) return;
+  // follow the unit group furthest from its own base: that's where the fighting is
+  let best = null, bd = -1;
+  for (const u of army) { const s = START[u.team]; const d = Math.hypot(u.x - (s.tx + 1.5) * T, u.y - (s.ty + 1.5) * T); if (d > bd) { bd = d; best = u; } }
+  const [bix, biy] = P(best.x, best.y), tx = bix - view.w / cam.z / 2, ty = biy - view.h / cam.z / 2;
+  cam.x += (tx - cam.x) * Math.min(1, dt * 0.4); cam.y += (ty - cam.y) * Math.min(1, dt * 0.4); clampCam();
+}
+startDemo();
+toTitle();
+paused = false;
+
+// test hooks
+window.__cf = {
+  get G() { return G; }, step, newGame, runAI,
+  setAuto(v) { autoPlayer = v; },
+  fast(n) { for (let i = 0; i < n && !G.over; i++) step(); },
+  setDifficulty(d) { difficulty = d; },
+};
+window.__cam = (x, y) => centerOn(x, y);
+window.__w2s = (x, y) => { const r = cv.getBoundingClientRect(); const [ix, iy] = P(x, y, 6); return { x: r.left + (ix - cam.x) * cam.z, y: r.top + (iy - cam.y) * cam.z }; };
+})();
+</script>

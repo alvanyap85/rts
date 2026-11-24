@@ -1,0 +1,8 @@
+{
+  "appId": "com.alvansstudio.coldfront",
+  "appName": "Cold Front",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#0b0f12"
+  }
+}

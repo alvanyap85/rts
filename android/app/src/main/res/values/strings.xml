@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Cold Front</string>
+    <string name="title_activity_main">Cold Front</string>
+    <string name="package_name">com.alvansstudio.coldfront</string>
+    <string name="custom_url_scheme">com.alvansstudio.coldfront</string>
+</resources>
