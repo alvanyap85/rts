@@ -20,11 +20,15 @@ const path = require('path');
   await pg.evaluate(() => __cf.fast(30 * 3));
   await pg.waitForTimeout(100);
   console.log('after deploy', await pg.evaluate(() => __cf.G.teams[0].cnt), await pg.evaluate(() => document.getElementById('msgs').textContent));
+  console.log('compact layout:', await pg.evaluate(() => document.body.classList.contains('compact')), '| rail visible:', await pg.isVisible('#rail'));
+  await pg.tap('#rBuild');
+  await pg.waitForTimeout(250);
   await pg.tap('.bb[aria-label="发电厂"]');
   await pg.evaluate(() => __cf.fast(30 * 8));
   console.log('after build', await st());
   await pg.waitForTimeout(200);
-  await pg.tap('.bb[aria-label="发电厂"]');            // enter placing
+  console.log('panel open:', await pg.evaluate(() => document.body.classList.contains('panel-open')));
+  await pg.tap('.bb[aria-label="发电厂"]');            // enter placing (closes the panel)
   await pg.waitForTimeout(200);
   console.log('placing bar visible', await pg.isVisible('#placeBar'));
   await pg.tap('#placeOk');
@@ -46,6 +50,7 @@ const path = require('path');
   const after = await pg.evaluate(() => { const u = __cf.G.ents.find(e => e.team === 0 && e.type === 'tank'); return [u.x | 0, u.y | 0, u.order.type]; });
   console.log('tank before', before, 'after', after);
   // queue infantry: needs barracks, expect deny message
+  await pg.tap('#rBuild'); await pg.waitForTimeout(250);
   await pg.tap('#tabU'); await pg.tap('.bb[aria-label="步枪兵"]');
   await pg.waitForTimeout(100);
   console.log('msg', await pg.evaluate(() => document.getElementById('msgs').textContent));

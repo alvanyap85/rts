@@ -77,7 +77,9 @@ Equal-cost fights on open ground (tanks vs rocket soldiers, riflemen vs rocket s
 node test/rules.cjs
 ```
 
-Checks that tanks crush enemy infantry, that an attacking AI unit turns on whoever shoots it, and that the MCV drives, turns and unfolds.
+Checks that tanks crush enemy infantry, that an attacking AI unit turns on whoever shoots it, that the MCV drives, turns and unfolds, and that a unit ranks up to veteran and elite and that elites repair themselves.
+
+`test/shot.cjs` takes an optional viewport after the scale (`node test/shot.cjs 1 1180 820`), to check the tablet layout.
 
 ## How the game works
 
@@ -87,6 +89,10 @@ Checks that tanks crush enemy infantry, that an attacking AI unit turns on whoev
 - **Start:** each side gets a base vehicle (MCV), a tank and three riflemen. Double-tap the MCV (or select it and press 展开) to deploy it. It drives to the middle of its tile, turns to face the viewer and unfolds into the construction yard (`stepDeploy`, `drawUnfold`, 1.7 s). Select the yard and press 收起 to pack it back into an MCV; this cancels any building in progress. More MCVs come from the war factory. A side loses when it has no buildings and no MCV left. Units marked `deploys: true` in `UDEF` deploy on a double-tap; for other units a double-tap selects that type.
 - **Buildings:** construction yard, power plant (+100 power), refinery (comes with a harvester), barracks, war factory, sentry gun. A new building must be within 4 tiles of one of your buildings. Low power halves production speed and slows sentry guns.
 - **Units:** rifleman (beats rocket soldiers), rocket soldier (beats tanks, outranges them), tank (beats riflemen, fires on the move), harvester, MCV. Damage multipliers per armour class are in `WDEF`; `test/duel.cjs` shows the balance.
+- **Ranks:** units with a weapon earn the value of what they destroy. At 3× their own cost they become 老兵 (veteran, one silver chevron); at 6× they become 精英 (elite, two gold chevrons and a star).
+  - Veteran: +25% damage, −18% damage taken, +10% speed, 12% faster fire, +1 sight.
+  - Elite: +50% damage, −35% damage taken, +20% speed, 25% faster fire, +1 sight, and it repairs itself (2% of its health per second).
+  - The numbers are in `RANK`.
 - **Crushing:** moving vehicles (tanks, harvesters, MCVs) crush enemy infantry they drive over, and enemy infantry doesn't block them. The AI drives its tanks onto nearby infantry; your own units only crush when you drive them over infantry.
 - **Fighting back:** a unit that is shot turns on its attacker if it is idle or attack-moving, unless its current target is already shooting back. AI units also drop their attack orders to do this; the player's own attack orders and move orders stand. Attack-moving and guarding units also switch from a harmless target (a building or a harvester) to an armed enemy in sight.
 - **Production:** the cost is paid as progress is made, and progress stalls when money runs out. One building at a time; infantry and vehicles each have a queue of up to 9. Each extra barracks or war factory makes its queue 60% faster. Long-press an icon to cancel and get the money back.
@@ -101,12 +107,16 @@ Checks that tanks crush enemy infantry, that an attacking AI unit turns on whoev
   - Camera: a quick one-finger drag pans, and a fling keeps the camera gliding; two fingers zoom; tapping the minimap jumps the camera.
   - The action bar at the bottom changes with the selection: 展开 (MCV), 停止 (units), 维修 / 出售 (your building), 收起 (construction yard), 取消选择. 全军 selects every combat unit.
   - Select a barracks or factory and tap the ground to set its rally point.
+- **Layout:** on short landscape screens (under 520 px tall, i.e. phones) the sidebar becomes a narrow rail: money, power, a 建造 button and a 雷达 button.
+  - 建造 opens the build panel over the map. It shows what is being built and how far along it is, and flashes when a building is ready to place (tapping it then goes straight to placing).
+  - 雷达 shows the minimap over the map.
+  - Tapping the map closes the panel. Buttons are 44 px tall, and the camera starts closer.
+  - Tablets and foldables keep the full sidebar.
 - **Controls (mouse):** left-drag to box-select; right- or middle-drag to pan; the wheel zooms; right-click clears the selection or cancels placing.
 
 ## Still to do
 
 1. Try it on real phones (frame rate on cheap phones, button sizes).
-2. A compact layout for regular phones: a collapsible sidebar, the minimap behind a button, a closer default zoom. The current layout suits tablets and foldables.
-3. More effects: multi-frame explosions, debris, smoke columns, screen shake, building collapse.
-4. Campaign missions, superweapons, engineers, more unit types per side.
-5. App icon, splash screen, store listing, privacy policy, then ads and "Remove ads" as in Block Crumble.
+2. More effects: multi-frame explosions, debris, smoke columns, screen shake, building collapse.
+3. Campaign missions, superweapons, engineers, more unit types per side.
+4. App icon, splash screen, store listing, privacy policy, then ads and "Remove ads" as in Block Crumble.

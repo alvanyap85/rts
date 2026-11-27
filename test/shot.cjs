@@ -5,7 +5,8 @@ const path = require('path');
 (async () => {
   const scale = +(process.argv[2] || 1);
   const b = await chromium.launch();
-  const pg = await b.newPage({ viewport: { width: 844, height: 390 }, deviceScaleFactor: scale, hasTouch: true });
+  const vw = +(process.argv[3] || 844), vh = +(process.argv[4] || 390);
+  const pg = await b.newPage({ viewport: { width: vw, height: vh }, deviceScaleFactor: scale, hasTouch: true });
   const errs = [];
   pg.on('pageerror', e => errs.push(String(e.stack || e)));
   await pg.goto('file://' + path.join(__dirname, 'page.html'));
@@ -16,7 +17,10 @@ const path = require('path');
   // let the AI drive the player's side for a while
   await pg.evaluate(() => { const G = __cf.G; G.teams[0].ai = true; __cf.fast(30 * 200); G.teams[0].ai = false; });
   await pg.evaluate(() => { const G = __cf.G; const hq = G.ents.find(e => e.team === 0 && e.type === 'hq'); });
+  if (await pg.evaluate(() => document.body.classList.contains('compact'))) { await pg.click('#rBuild'); await pg.click('#rRadar'); }
   await pg.click('#tabU');
+  // give a few units ranks so the insignia show up
+  await pg.evaluate(() => { const us = __cf.G.ents.filter(e => e.team === 0 && e.kind === 'u' && e.type !== 'harv'); us.slice(0, 3).forEach(u => u.rank = 1); us.slice(3, 6).forEach(u => u.rank = 2); });
   await pg.waitForTimeout(400);
   await pg.screenshot({ path: path.join(__dirname, 'g1-base.png') });
   // find a fight

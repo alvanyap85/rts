@@ -31,6 +31,16 @@ const path = require('path');
     const seen = new Set(); let t = 0;
     while (t < 30 * 8) { cf.step(); t++; const y = G.ents.find(e => e.type === 'hq'); if (G.byId.has(mcv.id)) seen.add(mcv.order.type); if (y) { seen.add(y.unfold !== undefined ? 'unfolding' : 'yard ready'); if (y.unfold === undefined) break; } }
     res.mcv = [...seen].join(' -> ') + ' in ' + (t / 30).toFixed(1) + 's';
+    // 4. ranks: a tank that keeps killing riflemen becomes veteran, then elite, and heals itself
+    G = fresh();
+    const vet = window.__addUnit(0, 'tank', 8 * T, 30 * T); const ranks = [];
+    for (let k = 0; k < 60 && (vet.rank || 0) < 2; k++) {
+      const r = window.__addUnit(1, 'rifle', 11 * T, (29 + (k % 3)) * T); r.hp = 20;
+      for (let i = 0; i < 30 * 4 && G.byId.has(r.id); i++) cf.step();
+      if (!ranks.length || ranks[ranks.length - 1] !== (vet.rank || 0)) ranks.push(vet.rank || 0);
+    }
+    vet.hp = vet.maxhp * 0.5; const h0 = vet.hp; for (let i = 0; i < 30 * 5; i++) cf.step();
+    res.ranks = 'ranks seen ' + ranks.join(' -> ') + ' (xp ' + vet.xp + '), elite self-repair over 5 s: ' + (h0 | 0) + ' -> ' + (vet.hp | 0);
     return res;
   });
   console.log(out);
