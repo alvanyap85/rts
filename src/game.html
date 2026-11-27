@@ -86,8 +86,10 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
 .fb[aria-pressed="true"] { background: #3a2c10; border-color: var(--amber); color: var(--amber); }
 .fb.go { background: #173f22; border-color: var(--ok); color: #c9f5d5; }
 #menuBtn { position: absolute; left: max(8px, env(safe-area-inset-left, 0px)); top: 8px; min-width: 38px; padding: 0; }
+#actBar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 6px; }
+.fb.warn { background: #4a1712; border-color: var(--bad); color: #ffd3cc; }
 #placeBar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); display: flex; gap: 8px; }
-#selInfo { position: absolute; right: 8px; bottom: 8px; font-size: 12px; color: var(--muted); background: rgba(10,14,17,.7); padding: 3px 8px; border-radius: 2px; pointer-events: none; }
+#selInfo { position: absolute; right: 8px; bottom: 54px; font-size: 12px; color: var(--muted); background: rgba(10,14,17,.7); padding: 3px 8px; border-radius: 2px; pointer-events: none; }
 #msgs { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }
 #msgs div {
   font-size: 13px; font-weight: 600; letter-spacing: .12em; color: var(--amber); background: rgba(8,10,12,.72);
@@ -133,10 +135,14 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
     <div id="msgs" aria-live="polite"></div>
     <button class="fb" id="menuBtn" aria-label="暂停">II</button>
     <div class="fbtns">
-      <button class="fb" id="boxBtn" aria-pressed="false">框选</button>
       <button class="fb" id="allBtn">全军</button>
+    </div>
+    <div id="actBar" hidden>
       <button class="fb go" id="deployBtn" hidden>展开</button>
-      <button class="fb" id="desBtn" hidden>取消</button>
+      <button class="fb" id="stopBtn" hidden>停止</button>
+      <button class="fb" id="repairBtn" hidden aria-pressed="false">维修</button>
+      <button class="fb" id="sellBtn" hidden>出售</button>
+      <button class="fb" id="desBtn">取消选择</button>
     </div>
     <div id="placeBar" hidden>
       <button class="fb go" id="placeOk">放置</button>
@@ -166,10 +172,10 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
   </div>
   <div class="row"><button class="big" id="startBtn">开始作战</button></div>
   <div class="help">
-    <div><b>选部队：</b>点一下单位；双击选同类；拖动框选（手机先开「框选」）</div>
+    <div><b>选部队：</b>点一下单位；双击选同类；按住地面不放，等圆圈出现后拖动就是框选</div>
     <div><b>下命令：</b>选中后点地面移动，点敌人攻击，点矿区采矿</div>
-    <div><b>看地图：</b>单指拖动平移，双指缩放，点右侧小地图跳转</div>
-    <div><b>造东西：</b>点右侧图标开始建造，建筑完成后再点一下放到地图上；长按图标取消</div>
+    <div><b>看地图：</b>单指拖动平移（可以甩），双指缩放，点右侧小地图跳转</div>
+    <div><b>造东西：</b>点右侧图标开始建造，完成后再点一下放到地图上；长按图标取消。点自己的建筑可以维修或出售</div>
   </div>
 </div>
 
@@ -474,7 +480,7 @@ function newGame(seed) {
     for (let k = 1; k < 4; k++) addUnit(tm.i, 'rifle', bx - dir * spots[k][0] * T, by + dir * spots[k][1] * T);
   }
   recount();
-  sel.clear(); selB = null; placing = null; boxMode = false; updateBoxBtn();
+  sel.clear(); selB = null; placing = null; camVel.x = camVel.y = 0;
   const mcv = G.ents.find(e => e.team === 0 && e.type === 'mcv');
   resize();
   cam.z = defaultZoom();
@@ -579,10 +585,10 @@ let fogC, fogX, fogImg;
 function paintFog() {
   if (!fogC) { fogC = document.createElement('canvas'); fogC.width = MW; fogC.height = MH; fogX = fogC.getContext('2d'); fogImg = fogX.createImageData(MW, MH); }
   const d = fogImg.data;
-  for (let i = 0; i < N; i++) { d[i * 4] = 4; d[i * 4 + 1] = 7; d[i * 4 + 2] = 9; d[i * 4 + 3] = !expl[i] ? 255 : vis[i] ? 0 : 120; }
+  for (let i = 0; i < N; i++) { d[i * 4] = 4; d[i * 4 + 1] = 7; d[i * 4 + 2] = 9; d[i * 4 + 3] = expl[i] ? 0 : 255; }
   fogX.putImageData(fogImg, 0, 0);
 }
-const seen = e => e.team === 0 || (e.kind === 'b' ? e.tiles.some(i => expl[i]) : vis[tileOf(e.x, e.y)]);
+const seen = e => e.team === 0 || (e.kind === 'b' ? e.tiles.some(i => expl[i]) : expl[tileOf(e.x, e.y)]);
 
 // ============================================================ production
 function canBuild(tm, type) {
@@ -694,6 +700,42 @@ function placeBuilding(tm, tx, ty) {
   return b;
 }
 
+// ============================================================ repair and sell
+const bldValue = b => b.type === 'hq' ? UDEF.mcv.cost : BDEF[b.type].cost;
+const sellValue = b => Math.round(bldValue(b) * 0.5 * clamp(b.hp / b.maxhp, 0, 1) / 10) * 10;
+function setRepair(b, on) { b.repairing = on && b.hp < b.maxhp; }
+function stepRepair(b, dt) {
+  if (!b.repairing) return;
+  if (b.hp >= b.maxhp) { b.repairing = false; return; }
+  const tm = G.teams[b.team];
+  // a full repair costs half the building's price, at 5% of its health per second
+  const heal = Math.min(b.maxhp - b.hp, b.maxhp * 0.05 * dt), cost = heal / b.maxhp * bldValue(b) * 0.5;
+  if (tm.credits < cost) { if (!tm.ai && G.t - tm.lastFunds > 12) { tm.lastFunds = G.t; say('资金不足，维修暂停', true); } return; }
+  tm.credits -= cost; b.hp += heal;
+}
+function sellBuilding(b) {
+  if (b.selling) return;
+  b.selling = true; b.repairing = false;
+  if (b.team === 0) sfx('cancel');
+}
+function finishSell(b) {
+  const tm = G.teams[b.team];
+  tm.credits += sellValue(b);
+  for (const i of b.tiles) bmap[i] = -1;
+  G.byId.delete(b.id); G.ents = G.ents.filter(e => e !== b);
+  if (selB === b) selB = null;
+  fieldVer++;
+  // a few crew members walk out
+  const crew = Math.min(3, Math.max(1, Math.round(b.w * b.h / 3)));
+  for (let k = 0; k < crew; k++) {
+    const t = nearestWalk(tileOf(b.x + (rnd() - .5) * T, (b.ty + b.h) * T + 4), 6);
+    const u = addUnit(b.team, 'rifle', (t % MW + .5) * T + (rnd() - .5) * 12, ((t / MW | 0) + .5) * T + (rnd() - .5) * 12);
+    u.dir = Math.PI / 2;
+  }
+  recount();
+  if (b.team === 0) { say('已出售 +$' + sellValue(b)); refreshSelUI(); }
+}
+
 // ============================================================ deploying the MCV
 function deploySpot(u) {
   const tx = Math.floor(u.x / T) - 1, ty = Math.floor(u.y / T) - 1;
@@ -763,7 +805,9 @@ function step() {
 }
 
 function stepBuilding(b, dt) {
+  if (b.selling) { b.bu -= dt / 0.9; if (b.bu <= 0) finishSell(b); return; }
   if (b.bu < 1) b.bu = Math.min(1, b.bu + dt / 1.1);
+  stepRepair(b, dt);
   const tm = G.teams[b.team];
   if (b.hp < b.maxhp * 0.5) {
     b.smokeT -= dt;
@@ -1137,6 +1181,7 @@ function runAI(tm) {
     if (want && want !== 'power' && netAfter(want) < 0) want = 'power';
     if (want && startBuilding(tm, want) && s.step < AI_ORDER.length && want === AI_ORDER[s.step]) s.step++;
   }
+  if (tm.credits > 800) for (const b of myB) if (!b.repairing && b.hp < b.maxhp * 0.7) setRepair(b, true);
   // --- units
   const harvs = myU.filter(u => u.type === 'harv').length, refs = tm.cnt.refinery || 0;
   if (tm.cnt.factory) {
@@ -1280,6 +1325,284 @@ function hazardY(c, y, xa, xb, za, zb) {
   c.restore();
 }
 
+// ============================================================ voxel models → pre-rendered sprites
+// Vehicles and buildings are modelled as voxels (1 voxel = 1 world px) and rendered once per facing and team
+// into sprites with lighting, specular, ambient occlusion, edge shading and a baked ground shadow.
+const VS = 2;                       // sprite pixels per world px
+const MAT = [null];
+function mat(hex, o = {}) {
+  const n = parseInt(hex.slice(1), 16);
+  MAT.push({ r: n >> 16, g: (n >> 8) & 255, b: n & 255, team: o.team || 0, spec: o.spec ?? 0.25, glow: !!o.glow, nz: o.nz ?? 0.05 });
+  return MAT.length - 1;
+}
+const M = {
+  steel: mat('#8b9297', { spec: .35 }), steelD: mat('#555c61', { spec: .3 }), steelL: mat('#a8afb3', { spec: .4 }),
+  tread: mat('#2a2e32', { spec: .12 }), treadL: mat('#454b50', { spec: .15 }),
+  concrete: mat('#696d6f', { spec: .04, nz: .07 }), concreteD: mat('#56595b', { spec: .04, nz: .07 }),
+  roof: mat('#9aa0a3', { spec: .15 }), team: mat('#3d9bff', { team: 1, spec: .5 }), teamD: mat('#1b4f8e', { team: 2, spec: .35 }),
+  glass: mat('#8fdcff', { glow: true }), lamp: mat('#ffd75a', { glow: true }), redL: mat('#ff4b3a', { glow: true }),
+  hazY: mat('#d9a324', { spec: .2 }), hazK: mat('#26231d'), olive: mat('#6c7752', { spec: .08 }), oliveL: mat('#7f8a5c', { spec: .08 }),
+  sand: mat('#a38d62', { spec: .02, nz: .12 }), tower: mat('#c7cac2', { spec: .08, nz: .04 }), dark: mat('#1d2124', { spec: .05 }),
+  silo: mat('#b5babd', { spec: .55 }),
+};
+class VModel {
+  constructor(x0, y0, z0, x1, y1, z1) { this.x0 = x0; this.y0 = y0; this.z0 = z0; this.w = x1 - x0; this.d = y1 - y0; this.h = z1 - z0; this.v = new Uint8Array(this.w * this.d * this.h); }
+  idx(x, y, z) { x -= this.x0; y -= this.y0; z -= this.z0; return (x < 0 || y < 0 || z < 0 || x >= this.w || y >= this.d || z >= this.h) ? -1 : (z * this.d + y) * this.w + x; }
+  get(x, y, z) { const i = this.idx(x, y, z); return i < 0 ? 0 : this.v[i]; }
+  // set every voxel in the integer range whose centre passes pred; m is a material or fn(x,y,z) -> material (0 clears)
+  fill(pred, m, x0, y0, z0, x1, y1, z1) {
+    x0 = Math.max(x0, this.x0); y0 = Math.max(y0, this.y0); z0 = Math.max(z0, this.z0);
+    x1 = Math.min(x1, this.x0 + this.w); y1 = Math.min(y1, this.y0 + this.d); z1 = Math.min(z1, this.z0 + this.h);
+    for (let z = z0; z < z1; z++) for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+      const cx = x + .5, cy = y + .5, cz = z + .5;
+      if (pred(cx, cy, cz)) this.v[this.idx(x, y, z)] = typeof m === 'function' ? m(cx, cy, cz) : m;
+    }
+    return this;
+  }
+  box(x0, y0, z0, x1, y1, z1, m) { return this.fill(() => true, m, Math.round(x0), Math.round(y0), Math.round(z0), Math.round(x1), Math.round(y1), Math.round(z1)); }
+  cyl(cx, cy, r, z0, z1, m, rin = -1) {
+    return this.fill((x, y) => { const d = Math.hypot(x - cx, y - cy); return d <= r && d > rin; }, m, Math.floor(cx - r) - 1, Math.floor(cy - r) - 1, Math.round(z0), Math.ceil(cx + r) + 1, Math.ceil(cy + r) + 1, Math.round(z1));
+  }
+  // recolour existing voxels
+  paint(pred, m) {
+    for (let z = 0; z < this.h; z++) for (let y = 0; y < this.d; y++) for (let x = 0; x < this.w; x++) {
+      const i = (z * this.d + y) * this.w + x, c = this.v[i]; if (!c) continue;
+      const wx = x + this.x0 + .5, wy = y + this.y0 + .5, wz = z + this.z0 + .5;
+      if (pred(wx, wy, wz, c)) this.v[i] = typeof m === 'function' ? m(wx, wy, wz, c) : m;
+    }
+    return this;
+  }
+}
+function surfaceOf(m) {
+  if (m.surf) return m.surf;
+  const out = [];
+  for (let z = 0; z < m.h; z++) for (let y = 0; y < m.d; y++) for (let x = 0; x < m.w; x++) {
+    const c = m.v[(z * m.d + y) * m.w + x]; if (!c) continue;
+    const X = x + m.x0, Y = y + m.y0, Z = z + m.z0;
+    let nx = 0, ny = 0, nz = 0, occ = 0, open = false;
+    for (let dz = -1; dz <= 1; dz++) for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy && !dz) continue;
+      if (m.get(X + dx, Y + dy, Z + dz)) occ++;
+      else { const w = 1 / Math.hypot(dx, dy, dz); nx += dx * w; ny += dy * w; nz += dz * w; if (Math.abs(dx) + Math.abs(dy) + Math.abs(dz) === 1 && !(dz === -1 && Z === m.z0)) open = true; }
+    }
+    if (!open) continue;
+    const L = Math.hypot(nx, ny, nz) || 1;
+    out.push(X + .5, Y + .5, Z + .5, nx / L, ny / L, nz / L, occ, c);
+  }
+  return m.surf = Float32Array.from(out);
+}
+const norm3 = (x, y, z) => { const l = Math.hypot(x, y, z); return [x / l, y / l, z / l]; };
+const LV = norm3(-0.35, 0.55, 1), VV = norm3(1, 1, 1.1), HV = norm3(LV[0] + VV[0], LV[1] + VV[1], LV[2] + VV[2]);
+const hexRGB = h => { const n = parseInt(h.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+function renderVox(m, ang, team, shadow = true) {
+  const s = surfaceOf(m), n = s.length / 8, co = Math.cos(ang), si = Math.sin(ang);
+  const shx = -LV[0] / LV[2], shy = -LV[1] / LV[2];
+  const tm = [null, hexRGB(TEAM[team].main), hexRGB(TEAM[team].dark)];
+  const rx = new Float32Array(n), ry = new Float32Array(n);
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let i = 0; i < n; i++) {
+    const x = s[i * 8], y = s[i * 8 + 1], z = s[i * 8 + 2];
+    const a = x * co - y * si, b = x * si + y * co; rx[i] = a; ry[i] = b;
+    const X = (a - b) * VS, Y = ((a + b) / 2 - z) * VS;
+    x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
+    if (shadow) { const ga = a + shx * z, gb = b + shy * z, SX = (ga - gb) * VS, SY = (ga + gb) / 2 * VS; x0 = Math.min(x0, SX); x1 = Math.max(x1, SX); y0 = Math.min(y0, SY); y1 = Math.max(y1, SY); }
+  }
+  const pad = 4, ox = Math.ceil(-x0) + pad, oy = Math.ceil(-y0) + pad;
+  const W = Math.ceil(x1 - x0) + pad * 2 + 1, H = Math.ceil(y1 - y0) + pad * 2 + 1;
+  const col = new Uint8ClampedArray(W * H * 4), dep = new Float32Array(W * H).fill(-1e9), shd = new Uint8Array(W * H);
+  if (shadow) for (let i = 0; i < n; i++) {
+    const z = s[i * 8 + 2], ga = rx[i] + shx * z, gb = ry[i] + shy * z;
+    const px = Math.round((ga - gb) * VS) + ox, py = Math.round((ga + gb) / 2 * VS) + oy;
+    for (let yy = py - 2; yy < py + 2; yy++) for (let xx = px - 2; xx < px + 2; xx++) if (xx >= 0 && yy >= 0 && xx < W && yy < H) shd[yy * W + xx] = 1;
+  }
+  for (let i = 0; i < n; i++) {
+    const o = i * 8, z = s[o + 2], nx = s[o + 3], ny = s[o + 4], nz = s[o + 5], occ = s[o + 6], mt = MAT[s[o + 7]];
+    const rnx = nx * co - ny * si, rny = nx * si + ny * co;
+    const base = mt.team ? tm[mt.team] : [mt.r, mt.g, mt.b];
+    let k, sp = 0;
+    if (mt.glow) k = 1.05;
+    else {
+      const dif = Math.max(0, rnx * LV[0] + rny * LV[1] + nz * LV[2]);
+      const ao = 1 - clamp((occ - 17) / 9, 0, 1) * 0.4;
+      k = (0.42 + 0.72 * dif) * ao;
+      sp = Math.pow(Math.max(0, rnx * HV[0] + rny * HV[1] + nz * HV[2]), 18) * mt.spec * 255;
+    }
+    k *= 1 + (hash2((s[o] * 7 + z * 131) | 0, (s[o + 1] * 13 - z * 17) | 0) - .5) * 2 * mt.nz;
+    const r = base[0] * k + sp, g = base[1] * k + sp, b = base[2] * k + sp, d = rx[i] + ry[i] + z;
+    const px = Math.round((rx[i] - ry[i]) * VS) + ox, py = Math.round(((rx[i] + ry[i]) / 2 - z) * VS) + oy;
+    for (let yy = py - 2; yy < py + 2; yy++) for (let xx = px - 2; xx < px + 2; xx++) {
+      const j = yy * W + xx; if (d <= dep[j]) continue;
+      dep[j] = d; col[j * 4] = r; col[j * 4 + 1] = g; col[j * 4 + 2] = b; col[j * 4 + 3] = 255;
+    }
+  }
+  // shade silhouette and depth-step edges so shapes read crisply at small sizes
+  const out = new Uint8ClampedArray(col);
+  for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {
+    const j = y * W + x;
+    if (!col[j * 4 + 3]) { if (shd[j]) out[j * 4 + 3] = 85; continue; }
+    let f = 1;
+    for (const q of [j - 1, j + 1, j - W, j + W]) { if (!col[q * 4 + 3]) { f = Math.min(f, 0.72); } else if (dep[q] < dep[j] - 3) f = Math.min(f, 0.8); }
+    if (f < 1) { out[j * 4] *= f; out[j * 4 + 1] *= f; out[j * 4 + 2] *= f; }
+  }
+  const cvs = document.createElement('canvas'); cvs.width = W; cvs.height = H;
+  cvs.getContext('2d').putImageData(new ImageData(out, W, H), 0, 0);
+  return { cv: cvs, ox, oy };
+}
+const SPR = new Map(), MODELS = {};
+function model(name) { return MODELS[name] || (MODELS[name] = MODEL_FN[name]()); }
+const DIRS32 = 32;
+function unitSpr(name, team, ang) {
+  const di = ((Math.round(ang / (Math.PI * 2) * DIRS32) % DIRS32) + DIRS32) % DIRS32, key = name + team + ':' + di;
+  let s = SPR.get(key); if (!s) { s = renderVox(model(name), di / DIRS32 * Math.PI * 2, team); SPR.set(key, s); }
+  return s;
+}
+function bldSpr(name, team) {
+  const key = 'B' + name + team; let s = SPR.get(key);
+  if (!s) { s = renderVox(model(name), 0, team); SPR.set(key, s); }
+  return s;
+}
+function drawSprite(c, s, wx, wy, wz, flash) {
+  const [sx, sy] = P(wx, wy, wz), w = s.cv.width / VS, h = s.cv.height / VS, x = sx - s.ox / VS, y = sy - s.oy / VS;
+  c.drawImage(s.cv, x, y, w, h);
+  if (flash) { c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha *= 0.55; c.drawImage(s.cv, x, y, w, h); c.restore(); }
+}
+
+// ---------- models (x = forward for vehicles; buildings use local tile-space px)
+function treads(m, x0, x1, ya, yb, h) {
+  m.fill((x, y, z) => !(Math.abs(x - (x0 + x1) / 2) > (x1 - x0) / 2 - 1.5 && (z < 1.2 || z > h - 1)), (x, y, z) => ((x + 60) | 0) % 3 === 0 ? M.treadL : M.tread, x0, ya, 0, x1, yb, h);
+}
+const octPred = (cx, cy, r) => (x, y) => { const dx = Math.abs(x - cx), dy = Math.abs(y - cy); return Math.max(dx, dy, (dx + dy) / 1.3) <= r; };
+const MODEL_FN = {
+  tank() {
+    const m = new VModel(-13, -11, 0, 13, 11, 10);
+    treads(m, -12, 12, -10, -5, 5); treads(m, -12, 12, 5, 10, 5);
+    m.box(-12, -10, 5, 12, -5, 6, M.teamD); m.box(-12, 5, 5, 12, 10, 6, M.teamD);
+    m.fill((x, y, z) => !(x > 6 && z > 9 - (x - 6) * 0.9) && !(x < -9.5 && z > 8), M.team, -11, -7, 4, 11, 7, 9);
+    m.paint((x, y, z) => z > 7.5 && x < -4 && x > -9 && ((x + 40) | 0) % 2 === 0, M.steelD);
+    m.box(10, -6, 5, 11, -4, 6, M.lamp); m.box(10, 4, 5, 11, 6, 6, M.lamp);
+    return m;
+  },
+  turret() {
+    const m = new VModel(-9, -8, 8, 23, 8, 18);
+    m.fill((x, y, z) => Math.hypot((x + 1.5) * 0.92, y) <= 6.3 - (z - 8) * 0.35, M.team, -9, -8, 8, 6, 8, 13);
+    m.box(3, -3, 8, 6, 3, 12, M.teamD);
+    m.box(5, -1, 9, 19, 1, 11, M.steelD);
+    m.box(18, -2, 8, 21, 2, 12, M.steelD);
+    m.cyl(-3.5, -2.5, 1.6, 12, 14, M.teamD);
+    m.box(-5, 3, 12, -4, 4, 18, M.dark);
+    return m;
+  },
+  harv() {
+    const m = new VModel(-15, -12, 0, 18, 12, 17);
+    treads(m, -14, 14, -11, -6, 5); treads(m, -14, 14, 6, 11, 5);
+    m.box(-13, -8, 4, 13, 8, 8, M.steelD);
+    m.fill((x, y, z) => x < -11 || x > 2 || y < -6 || y > 6 || z < 9, M.steel, -12, -7, 8, 3, 7, 15);
+    m.paint((x, y, z) => z > 12 && z < 14 && (x < -11 || x > 2 || y < -6 || y > 6), M.hazY);
+    m.box(4, -7, 8, 13, 7, 16, M.team);
+    m.box(12, -5, 11, 13, 5, 15, M.glass);
+    m.box(6, -7, 12, 11, -6, 15, M.glass); m.box(6, 6, 12, 11, 7, 15, M.glass);
+    m.box(13, -6, 1, 17, 6, 4, M.steel);
+    m.paint((x, y, z) => x > 16 && ((y + 40) | 0) % 2 === 0, M.steelD);
+    return m;
+  },
+  mcv() {
+    const m = new VModel(-18, -14, 0, 18, 14, 24);
+    treads(m, -17, 17, -13, -7, 6); treads(m, -17, 17, 7, 13, 6);
+    m.box(-16, -10, 4, 16, 10, 10, M.teamD);
+    m.box(-15, -9, 10, 5, 9, 19, M.steelL);
+    m.paint((x, y, z) => z > 15 && z < 18 && (y < -8 || y > 8 || x < -14 || x > 4), M.team);
+    m.paint((x, y, z) => z > 18 && ((x + 40) | 0) % 6 === 0, M.steel);
+    m.box(6, -8, 10, 16, 8, 17, M.team);
+    m.box(15, -6, 13, 16, 6, 16, M.glass);
+    m.cyl(-12, 0, 2.5, 19, 22, M.hazY);
+    m.box(-12, -1, 21, 4, 1, 23, M.hazY);
+    m.box(10, -10.5, 6, 16, 10.5, 7, M.hazK);
+    return m;
+  },
+  hq() {
+    const m = new VModel(0, 0, 0, 96, 96, 54);
+    m.box(1, 1, 0, 95, 95, 1, M.concrete).paint((x, y) => (x | 0) % 16 === 0 || (y | 0) % 16 === 0, M.concreteD);
+    m.box(8, 10, 1, 88, 88, 15, M.steel);
+    m.paint((x, y, z) => z < 14 && z > 1 && ((x | 0) % 8 === 0 || (y | 0) % 8 === 0), M.steelD);
+    m.paint((x, y, z) => z > 11 && z < 14 && (x < 9 || x > 87 || y < 11 || y > 87), M.team);
+    m.paint((x, y, z) => z > 5 && z < 9 && x > 87 && (y | 0) % 10 < 6, M.glass);
+    m.box(14, 16, 15, 76, 80, 22, M.roof);
+    // helipad: ring with an H
+    m.paint((x, y, z) => z > 21 && (Math.abs(Math.hypot(x - 36, y - 40) - 10) < 1 ||
+      ((Math.abs(x - 32) < 1 || Math.abs(x - 40) < 1) && Math.abs(y - 40) < 5) || (Math.abs(y - 40) < 1 && Math.abs(x - 36) < 4)), M.hazY);
+    m.box(56, 24, 22, 66, 34, 26, M.steelD); m.box(56, 50, 22, 66, 60, 26, M.steelD);
+    m.cyl(78, 20, 4, 15, 52, M.hazY);
+    return m;
+  },
+  power() {
+    const m = new VModel(0, 0, 0, 64, 64, 34);
+    m.box(1, 1, 0, 63, 63, 1, M.concrete);
+    m.box(4, 4, 1, 60, 60, 9, M.steel);
+    m.paint((x, y, z) => z > 6 && z < 8 && (x < 5 || x > 59 || y < 5 || y > 59), M.team);
+    m.paint((x, y, z) => y > 59 && x > 8 && x < 14 && z > 3 && z < 6, M.lamp);
+    for (const [cx, cy, R, z1] of [[20, 20, 11, 32], [44, 44, 10, 28]]) {
+      m.fill((x, y, z) => { const r = R - Math.sin((z - 9) / (z1 - 9) * Math.PI) * 2.4, d = Math.hypot(x - cx, y - cy); return d <= r && d > r - 2.3; }, M.tower, cx - R - 1, cy - R - 1, 9, cx + R + 1, cy + R + 1, z1);
+      m.cyl(cx, cy, R - 1, 9, 10, M.dark);
+      m.paint((x, y, z) => z > z1 - 5 && z < z1 - 3 && Math.hypot(x - cx, y - cy) < R + 1, M.team);
+    }
+    m.box(29, 27, 9, 37, 30, 12, M.steelD);
+    return m;
+  },
+  refinery() {
+    const m = new VModel(0, 0, 0, 96, 64, 30);
+    m.box(1, 1, 0, 95, 63, 1, M.concrete);
+    m.box(6, 6, 1, 58, 58, 15, M.steel);
+    m.paint((x, y, z) => z < 14 && z > 1 && (x | 0) % 8 === 0, M.steelD);
+    m.paint((x, y, z) => z > 11 && z < 14 && (x < 7 || x > 57 || y < 7 || y > 57), M.team);
+    m.box(12, 12, 15, 52, 46, 21, M.roof);
+    m.box(18, 18, 21, 30, 30, 24, M.steelD);
+    m.box(58, 17, 9, 70, 20, 12, M.steelD);
+    for (const [cx, cy, z1] of [[76, 16, 26], [80, 44, 24]]) {
+      m.cyl(cx, cy, 8.5, 1, z1, M.silo); m.cyl(cx, cy, 6, z1, z1 + 2, M.silo); m.cyl(cx, cy, 3, z1 + 2, z1 + 3, M.silo);
+      m.paint((x, y, z) => x > 66 && z > z1 - 8 && z < z1 - 6, M.team);
+    }
+    return m;
+  },
+  barracks() {
+    const m = new VModel(0, 0, 0, 64, 64, 20);
+    m.box(1, 1, 0, 63, 63, 1, M.concrete);
+    m.box(6, 8, 1, 58, 58, 10, M.olive);
+    m.fill((x, y, z) => z <= 19.5 - Math.abs(y - 33) * 9.5 / 26, (x, y) => ((y | 0) % 3 === 0 ? M.olive : M.oliveL), 5, 7, 10, 59, 59, 20);
+    m.paint((x, y, z) => z > 7 && z < 9 && (x < 7 || x > 57 || y > 57), M.team);
+    m.box(8, 59, 1, 22, 62, 4, M.sand); m.box(42, 59, 1, 56, 62, 4, M.sand);
+    return m;
+  },
+  factory() {
+    const m = new VModel(0, 0, 0, 96, 96, 46);
+    m.box(1, 1, 0, 95, 95, 1, M.concrete).paint((x, y) => (x | 0) % 16 === 0 || (y | 0) % 16 === 0, M.concreteD);
+    m.box(6, 6, 1, 90, 90, 24, M.steel);
+    m.paint((x, y, z) => z < 19 && z > 1 && ((x | 0) % 10 === 0 || (y | 0) % 10 === 0), M.steelD);
+    m.paint((x, y, z) => z > 19 && z < 23 && (x < 7 || x > 89 || y < 7 || y > 89), M.team);
+    for (let k = 0; k < 4; k++) {
+      m.box(14 + k * 18, 14, 24, 24 + k * 18, 82, 27, M.roof);
+      m.paint((x, y, z) => z > 26 && x > 15 + k * 18 && x < 23 + k * 18 && (y | 0) % 12 < 5, M.glass);
+    }
+    m.cyl(82, 14, 3, 24, 44, M.hazY);
+    m.box(34, 13, 42, 84, 15, 45, M.hazY);
+    m.box(36, 13, 34, 37, 15, 42, M.dark);
+    return m;
+  },
+  turretBase() {
+    const m = new VModel(0, 0, 0, 32, 32, 9);
+    m.fill(octPred(16, 16, 14), M.concrete, 0, 0, 0, 32, 32, 6);
+    m.paint((x, y, z) => z > 4, M.steel);
+    m.fill(octPred(16, 16, 10), M.teamD, 0, 0, 6, 32, 32, 8);
+    return m;
+  },
+  gun() {
+    const m = new VModel(-8, -7, 8, 22, 7, 18);
+    m.fill((x, y, z) => !(x > 4 && z > 14 - (x - 4) * 0.8), M.team, -7, -6, 8, 7, 6, 15);
+    m.box(4, -4, 10, 21, -2, 12, M.steelD); m.box(4, 2, 10, 21, 4, 12, M.steelD);
+    m.box(-4, -2, 15, 0, 2, 17, M.steelD);
+    return m;
+  },
+};
+
 // ---------- frame
 function render() {
   if (!G) return;
@@ -1309,7 +1632,7 @@ function render() {
   // ore crystals
   for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) { const i = y * MW + x; if (ore[i] && expl[i]) drawOre(x, y, ore[i]); }
   // unit shadows
-  for (const e of G.ents) if (e.kind === 'u' && seen(e)) { const [sx, sy] = P(e.x, e.y); if (onScreenI(sx, sy)) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + 2, sy + 1, e.r * 1.5, e.r * 0.8, 0, 0, 7); ctx.fill(); } }
+  for (const e of G.ents) if (e.kind === 'u' && UDEF[e.type].cat === 'inf' && seen(e)) { const [sx, sy] = P(e.x, e.y); if (onScreenI(sx, sy)) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(sx + 2, sy + 1, e.r * 1.5, e.r * 0.8, 0, 0, 7); ctx.fill(); } }
   // upright things, back to front
   const list = [];
   for (const p of props) { if (p.x < tx0 * T - T || p.x > (tx1 + 1) * T || p.y < ty0 * T - T || p.y > (ty1 + 1) * T || !expl[tileOf(p.x, p.y)]) continue; const [ix, iy] = P(p.x, p.y); if (onScreenI(ix, iy)) list.push(p); }
@@ -1335,6 +1658,10 @@ function render() {
   for (const e of list) if (e.kind && e.hp < e.maxhp && !sel.has(e) && e !== selB && (e.dmgT > 0 || e.kind === 'b')) drawHp(e);
   for (const e of list) if (e.dmgT > 0) e.dmgT -= 1 / 60;
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  if (gesture && gesture.type === 'pending' && !gesture.mouse && !placing) {
+    const p = clamp((performance.now() - gesture.t0 - 80) / (LONG_PRESS - 80), 0, 1);
+    if (p > 0) { ctx.strokeStyle = 'rgba(125,255,154,.9)'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(gesture.sx, gesture.sy, 26, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2); ctx.stroke(); }
+  }
   if (boxDrag) {
     const x = Math.min(boxDrag.x0, boxDrag.x1), y = Math.min(boxDrag.y0, boxDrag.y1), w = Math.abs(boxDrag.x1 - boxDrag.x0), h = Math.abs(boxDrag.y1 - boxDrag.y0);
     ctx.fillStyle = 'rgba(125,255,154,.08)'; ctx.fillRect(x, y, w, h);
@@ -1399,31 +1726,21 @@ function drawProp(c, p) {
 function drawUnit(c, u, tc) {
   const fl = u.dmgT > 0.08, x = u.x, y = u.y, a = u.dir;
   const barrel = (ang, len, z, w, from = 4) => line3(c, P(x + Math.cos(ang) * from, y + Math.sin(ang) * from, z), P(x + Math.cos(ang) * len, y + Math.sin(ang) * len, z), '#2a2e31', w);
+  const team = u.team || 0;
   if (u.type === 'tank') {
-    rbox(c, x, y, a, -12, 12, -10, -5, 0, 5, '#2e3337', fl);
-    rbox(c, x, y, a, -12, 12, 5, 10, 0, 5, '#2e3337', fl);
-    rbox(c, x, y, a, -11, 11, -6.5, 6.5, 2.5, 8, tc.main, fl);
-    const t = u.tdir, back = Math.cos(t) + Math.sin(t) < 0;
-    if (back) barrel(t, 19, 10.5, 2.6);
-    prism(c, octo(x - Math.cos(t) * 1.5, y - Math.sin(t) * 1.5, 6), 8, 12.5, tc.main, fl);
-    if (!back) barrel(t, 19, 10.5, 2.6);
-    if (u.fireT > 0) { const [fx, fy] = P(x + Math.cos(t) * 21, y + Math.sin(t) * 21, 10.5); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fx, fy, 3.5, 0, 7); c.fill(); }
+    drawSprite(c, unitSpr('tank', team, a), x, y, 0, fl);
+    drawSprite(c, unitSpr('turret', team, u.tdir), x, y, 0, fl);
+    if (u.fireT > 0) { const t = u.tdir, [fx, fy] = P(x + Math.cos(t) * 22, y + Math.sin(t) * 22, 10); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fx, fy, 3.5, 0, 7); c.fill(); }
   } else if (u.type === 'harv') {
-    rbox(c, x, y, a, -14, 14, -11, -6, 0, 5, '#2e3337', fl);
-    rbox(c, x, y, a, -14, 14, 6, 11, 0, 5, '#2e3337', fl);
-    rbox(c, x, y, a, -13, 13, -8, 8, 3, 8, '#5c6368', fl);
-    rbox(c, x, y, a, -12, 3, -7, 7, 8, 14, '#6f767b', fl);
-    if (u.carry > 0) { const f = Math.sqrt(u.carry / HARV_CAP); const [gx, gy] = P(x - Math.cos(a) * 4.5, y - Math.sin(a) * 4.5, 14); c.fillStyle = '#e7b62f'; c.beginPath(); c.ellipse(gx, gy, 9 * f + 1, 4.5 * f + 1, 0, 0, 7); c.fill(); c.fillStyle = '#fff0a0'; c.fillRect(gx - 2, gy - 2, 2, 1.5); }
-    rbox(c, x, y, a, 4, 13, -7, 7, 8, 16, tc.main, fl);
-    if (u.hs === 'mine') rbox(c, x, y, a, 13, 17, -6, 6, 1, 5, '#8a8f93', fl);
+    drawSprite(c, unitSpr('harv', team, a), x, y, 0, fl);
+    if (u.carry > 0) {
+      const f = Math.sqrt(u.carry / HARV_CAP), [gx, gy] = P(x - Math.cos(a) * 4.5, y - Math.sin(a) * 4.5, 13 + f * 2);
+      c.fillStyle = '#c9951f'; c.beginPath(); c.ellipse(gx, gy, 9 * f + 1, 4.5 * f + 1, 0, 0, 7); c.fill();
+      c.fillStyle = '#f2c63a'; c.beginPath(); c.ellipse(gx - 1, gy - 1, 6 * f + .5, 3 * f + .5, 0, 0, 7); c.fill();
+      c.fillStyle = '#fff0a0'; c.fillRect(gx - 2, gy - 2, 2, 1.5);
+    }
   } else if (u.type === 'mcv') {
-    rbox(c, x, y, a, -17, 17, -13, -7, 0, 6, '#2e3337', fl);
-    rbox(c, x, y, a, -17, 17, 7, 13, 0, 6, '#2e3337', fl);
-    rbox(c, x, y, a, -16, 16, -10, 10, 3, 10, tc.dark, fl);
-    rbox(c, x, y, a, -15, 5, -9, 9, 10, 19, '#9aa1a6', fl);
-    prism(c, [[0,0]].length && (() => { const co = Math.cos(a), si = Math.sin(a), pt = (f, q) => [x + f * co - q * si, y + f * si + q * co]; return [pt(-15, -9), pt(5, -9), pt(5, 9), pt(-15, 9)]; })(), 19, 21, tc.main, fl, '#9aa1a6');
-    rbox(c, x, y, a, 6, 16, -8, 8, 10, 18, tc.main, fl);
-    line3(c, P(x - Math.cos(a) * 12, y - Math.sin(a) * 12, 22), P(x + Math.cos(a) * 3, y + Math.sin(a) * 3, 25), '#d8a222', 2.5);
+    drawSprite(c, unitSpr('mcv', team, a), x, y, 0, fl);
   } else {
     // infantry: small upright figure
     const [sx, sy] = P(x, y);
@@ -1449,85 +1766,44 @@ function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcT
 // ---------- buildings
 function drawBuilding(c, b, tc, ghost) {
   const d = BDEF[b.type], x0 = b.tx * T, y0 = b.ty * T, x1 = x0 + d.w * T, y1 = y0 + d.h * T;
-  const fl = !ghost && b.dmgT > 0.08, t = G ? G.t : 0;
-  const steel = '#8a9196', roof = '#a2a9ad';
+  const team = b.team || 0, fl = !ghost && b.dmgT > 0.08, t = G ? G.t : 0;
   c.save();
   if (!ghost && b.bu < 1) {
     const top = P(x0, y0, 70)[1], bot = P(x1, y1)[1] + 2, cut = bot - (bot - top) * b.bu;
-    c.beginPath(); c.rect(P(x0, y1)[0] - 20, cut, (x1 - x0) + (y1 - y0) + 40, bot - cut + 4); c.clip();
+    c.beginPath(); c.rect(P(x0, y1)[0] - 20, cut, (x1 - x0) + (y1 - y0) + 120, bot - cut + 30); c.clip();
   }
-  // concrete pad
-  c.save(); groundOn(c); c.fillStyle = '#585c5f'; c.fillRect(x0 + 1, y0 + 1, x1 - x0 - 2, y1 - y0 - 2); c.fillStyle = '#6b6f72'; c.fillRect(x0 + 2, y0 + 2, x1 - x0 - 4, 2); c.fillRect(x0 + 2, y0 + 2, 2, y1 - y0 - 4); c.restore();
+  drawSprite(c, bldSpr(b.type === 'turret' ? 'turretBase' : b.type, team), x0, y0, 0, fl);
   switch (b.type) {
     case 'hq': {
-      boxW(c, x0 + 8, y0 + 10, x1 - 8, y1 - 8, 0, 15, steel, fl);
-      band(c, x0 + 8, y0 + 10, x1 - 8, y1 - 8, 15, 18, tc.main, fl);
-      boxW(c, x0 + 14, y0 + 16, x1 - 20, y1 - 16, 18, 24, roof, fl);
-      hazardY(c, y1 - 8, x0 + 28, x1 - 28, 0, 11);
-      for (let k = 0; k < 4; k++) faceX(c, x1 - 8, y0 + 16 + k * 16, y0 + 26 + k * 16, 7, 11, (k + (t * 2 | 0)) % 4 ? 'rgba(150,225,255,.85)' : '#1b2a33');
-      cyl(c, x1 - 18, y0 + 20, 4, 18, 52, '#d8a222', fl);
-      const ang = Math.sin(t * 0.4) * 0.6 + 2.4;
-      const tip = P(x1 - 18 + Math.cos(ang) * 46, y0 + 20 + Math.sin(ang) * 46, 50);
-      line3(c, P(x1 - 18 - Math.cos(ang) * 10, y0 + 20 - Math.sin(ang) * 10, 51), tip, '#d8a222', 3);
+      hazardY(c, y1 - 8, x0 + 28, x1 - 28, 1, 11);
+      const ang = Math.sin(t * 0.4) * 0.6 + 2.4, mx = x1 - 18, my = y0 + 20;
+      const tip = P(mx + Math.cos(ang) * 46, my + Math.sin(ang) * 46, 50);
+      line3(c, P(mx - Math.cos(ang) * 10, my - Math.sin(ang) * 10, 51), tip, '#c99a22', 3);
       line3(c, tip, [tip[0], tip[1] + 18], '#333', 1);
-      c.fillStyle = (t * 2 | 0) % 2 ? '#ff4b3a' : '#5a1a14'; const bl = P(x1 - 18, y0 + 20, 54); c.beginPath(); c.arc(bl[0], bl[1], 2, 0, 7); c.fill();
+      c.fillStyle = (t * 2 | 0) % 2 ? '#ff4b3a' : '#5a1a14'; const bl = P(mx, my, 54); c.beginPath(); c.arc(bl[0], bl[1], 2, 0, 7); c.fill();
       break;
     }
-    case 'power': {
-      boxW(c, x0 + 4, y0 + 4, x1 - 4, y1 - 4, 0, 7, steel, fl);
-      band(c, x0 + 4, y0 + 4, x1 - 4, y1 - 4, 7, 9, tc.main, fl);
-      cyl(c, x0 + 20, y0 + 20, 11, 9, 32, '#c5c8c0', fl, true);
-      cyl(c, x0 + 44, y0 + 44, 10, 9, 28, '#c5c8c0', fl, true);
-      faceY(c, y1 - 4, x0 + 40, x0 + 52, 1, 6, '#ffd54a');
-      break;
-    }
-    case 'refinery': {
-      boxW(c, x0 + 6, y0 + 6, x0 + 58, y1 - 6, 0, 15, steel, fl);
-      band(c, x0 + 6, y0 + 6, x0 + 58, y1 - 6, 15, 18, tc.main, fl);
-      boxW(c, x0 + 12, y0 + 12, x0 + 52, y1 - 18, 18, 24, roof, fl);
-      faceY(c, y1 - 6, x0 + 18, x0 + 46, 0, 9, '#33383c');
+    case 'refinery':
+      faceY(c, y1 - 6, x0 + 18, x0 + 46, 1, 9, '#2b3034');
       faceY(c, y1 - 6, x0 + 18, x0 + 46, 9, 10.5, '#ffbf3a');
-      line3(c, P(x0 + 58, y0 + 20, 12), P(x0 + 70, y0 + 18, 12), '#2d3135', 3);
-      cyl(c, x0 + 76, y0 + 16, 8.5, 0, 26, '#b4b9bc', fl);
-      cyl(c, x0 + 80, y0 + 44, 8.5, 0, 24, '#b4b9bc', fl);
       break;
-    }
     case 'barracks': {
-      const ym = (y0 + 8 + y1 - 6) / 2;
-      boxW(c, x0 + 6, y0 + 8, x1 - 6, y1 - 6, 0, 10, '#6f7a55', fl);
-      fillPoly(c, [P(x0 + 6, y0 + 8, 10), P(x1 - 6, y0 + 8, 10), P(x1 - 6, ym, 19), P(x0 + 6, ym, 19)], fl ? '#fff' : '#7d895e');
-      fillPoly(c, [P(x0 + 6, ym, 19), P(x1 - 6, ym, 19), P(x1 - 6, y1 - 6, 10), P(x0 + 6, y1 - 6, 10)], fl ? '#fff' : '#5c6646');
-      fillPoly(c, [P(x1 - 6, y0 + 8, 10), P(x1 - 6, y1 - 6, 10), P(x1 - 6, ym, 19)], fl ? '#fff' : '#4d563a');
-      faceY(c, y1 - 6, x0 + 24, x0 + 40, 0, 8, '#1e2224');
-      faceY(c, y1 - 6, x0 + 6, x1 - 6, 8, 9.5, tc.main);
-      line3(c, P(x0 + 12, y0 + 12, 0), P(x0 + 12, y0 + 12, 36), '#ddd', 1.3);
-      const fp = P(x0 + 12, y0 + 12, 36), wv = Math.sin(t * 5) * 1.5;
+      faceY(c, y1 - 6, x0 + 24, x0 + 40, 1, 8, '#1e2224');
+      line3(c, P(x0 + 10, y0 + 10, 1), P(x0 + 10, y0 + 10, 34), '#ddd', 1.3);
+      const fp = P(x0 + 10, y0 + 10, 34), wv = Math.sin(t * 5) * 1.5;
       c.fillStyle = tc.main; c.beginPath(); c.moveTo(fp[0], fp[1]); c.lineTo(fp[0] + 12, fp[1] + 3 + wv); c.lineTo(fp[0], fp[1] + 7); c.fill();
       break;
     }
     case 'factory': {
-      boxW(c, x0 + 6, y0 + 6, x1 - 6, y1 - 6, 0, 24, steel, fl);
-      band(c, x0 + 6, y0 + 6, x1 - 6, y1 - 6, 24, 27, tc.main, fl);
-      c.save(); c.translate(0, -27); c.globalAlpha *= 0.9;
-      for (let k = 0; k < 4; k++) { const xa = x0 + 14 + k * 18; fillPoly(c, [P(xa, y0 + 14), P(xa + 10, y0 + 14), P(xa + 10, y1 - 14), P(xa, y1 - 14)], '#7c8388'); fillPoly(c, [P(xa + 2, y0 + 16), P(xa + 8, y0 + 16), P(xa + 8, y0 + 24), P(xa + 2, y0 + 24)], 'rgba(170,225,255,.45)'); }
-      c.restore();
-      const busy = G && G.teams[b.team] && G.teams[b.team].q.veh.length > 0;
-      faceY(c, y1 - 6, x0 + 22, x1 - 22, 0, 18, '#16191b');
-      if (!busy) hazardY(c, y1 - 6, x0 + 22, x1 - 22, 0, 18); else hazardY(c, y1 - 6, x0 + 22, x1 - 22, 13, 18);
-      cyl(c, x1 - 14, y0 + 14, 3, 27, 44, '#d8a222', fl);
-      line3(c, P(x1 - 14, y0 + 14, 44), P(x0 + 34, y0 + 14, 44), '#d8a222', 2.5);
+      const busy = G && G.teams[team] && G.teams[team].q.veh.length > 0;
+      faceY(c, y1 - 6, x0 + 22, x1 - 22, 1, 18, '#16191b');
+      hazardY(c, y1 - 6, x0 + 22, x1 - 22, busy ? 13 : 1, 18);
       break;
     }
     case 'turret': {
       const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
-      prism(c, octo(cx, cy, 14), 0, 6, '#70767b', fl);
-      prism(c, octo(cx, cy, 10), 6, 8, tc.dark, fl);
-      const a = b.tdir, back = Math.cos(a) + Math.sin(a) < 0;
-      const brl = () => { for (const s of [-2.5, 2.5]) line3(c, P(cx + Math.cos(a) * 4 - Math.sin(a) * s, cy + Math.sin(a) * 4 + Math.cos(a) * s, 12), P(cx + Math.cos(a) * 20 - Math.sin(a) * s, cy + Math.sin(a) * 20 + Math.cos(a) * s, 12), '#2a2e31', 2.2); };
-      if (back) brl();
-      rbox(c, cx, cy, a, -7, 7, -6, 6, 8, 15, tc.main, fl);
-      if (!back) brl();
-      if (b.fireT > 0) { const fp = P(cx + Math.cos(a) * 23, cy + Math.sin(a) * 23, 12); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fp[0], fp[1], 4, 0, 7); c.fill(); b.fireT -= 1 / 60; }
+      drawSprite(c, unitSpr('gun', team, b.tdir), cx, cy, 0, fl);
+      if (b.fireT > 0) { const a = b.tdir, fp = P(cx + Math.cos(a) * 23, cy + Math.sin(a) * 23, 11); c.fillStyle = '#fff2b0'; c.beginPath(); c.arc(fp[0], fp[1], 4, 0, 7); c.fill(); b.fireT -= 1 / 60; }
       break;
     }
   }
@@ -1536,6 +1812,16 @@ function drawBuilding(c, b, tc, ghost) {
     const fl2 = (Math.sin(t * 17 + b.id) + 1) / 2, [fx, fy] = P(b.x, b.y, d.H * 0.8);
     c.fillStyle = `rgba(255,${120 + fl2 * 80 | 0},40,.85)`; c.beginPath(); c.arc(fx - 6, fy, 3 + fl2 * 2.5, 0, 7); c.fill();
   }
+  if (!ghost && b.repairing && G && (G.t * 2 | 0) % 2) drawWrench(c, b);
+}
+function drawWrench(c, b) {
+  const [sx, sy] = P(b.x, b.y, BDEF[b.type].H + 18);
+  c.save(); c.translate(sx, sy); c.rotate(-0.7);
+  c.fillStyle = '#ffd86b'; c.strokeStyle = '#2a2000'; c.lineWidth = 1;
+  c.beginPath(); c.rect(-1.6, -2, 3.2, 12); c.fill(); c.stroke();
+  c.beginPath(); c.arc(0, -4, 4.2, 0, 7); c.fill(); c.stroke();
+  c.fillStyle = '#2a2000'; c.fillRect(-1.4, -9, 2.8, 5);
+  c.restore();
 }
 
 // ---------- overlays
@@ -1584,7 +1870,7 @@ function drawFx(f) {
     }
     case 'fire': ctx.fillStyle = `rgba(255,${150 - p * 100 | 0},40,${1 - p})`; ctx.beginPath(); ctx.arc(sx, sy, f.s * (1 - p * .5), 0, 7); ctx.fill(); break;
     case 'body': {
-      if (!vis[tileOf(f.x, f.y)] && f.team !== 0) break;
+      if (!expl[tileOf(f.x, f.y)] && f.team !== 0) break;
       ctx.globalAlpha = p > 0.7 ? (1 - p) / 0.3 : 1;
       ctx.fillStyle = 'rgba(90,20,15,.5)'; ctx.beginPath(); ctx.ellipse(sx, sy, 5, 2.5, 0, 0, 7); ctx.fill();
       ctx.fillStyle = TEAM[f.team].dark; ctx.fillRect(sx - 4, sy - 2.5, 8, 3.5); ctx.fillStyle = '#c99b70'; ctx.beginPath(); ctx.arc(sx + 5, sy - 1, 1.8, 0, 7); ctx.fill();
@@ -1646,23 +1932,35 @@ function renderMini() {
 }
 
 // ============================================================ input
-let boxMode = false, boxDrag = null, gesture = null, lastTap = null, hoverW = null;
+let boxDrag = null, gesture = null, lastTap = null, hoverW = null, lpTimer = null;
+const camVel = { x: 0, y: 0 };
 const marks = [];
 const pointers = new Map();
-const boxBtn = document.getElementById('boxBtn');
-function updateBoxBtn() { boxBtn.setAttribute('aria-pressed', String(boxMode)); }
+const LONG_PRESS = 300;
 cv.addEventListener('contextmenu', e => e.preventDefault());
+let lastPointerTouch = false;
+cv.addEventListener('pointerdown', e => { lastPointerTouch = e.pointerType !== 'mouse'; }, true);
 cv.addEventListener('pointerdown', e => {
   if (!G || paused) return;
   audioInit();
-  cv.setPointerCapture(e.pointerId);
+  try { cv.setPointerCapture(e.pointerId); } catch (err) {}
   pointers.set(e.pointerId, { x: e.offsetX, y: e.offsetY });
+  camVel.x = camVel.y = 0;
+  clearTimeout(lpTimer);
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
-    gesture = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, w0: s2w((a.x + b.x) / 2, (a.y + b.y) / 2) };
+    gesture = { type: 'pinch', d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z, i0: s2i((a.x + b.x) / 2, (a.y + b.y) / 2) };
     boxDrag = null;
   } else if (pointers.size === 1) {
-    gesture = { type: 'pending', sx: e.offsetX, sy: e.offsetY, button: e.button, mouse: e.pointerType === 'mouse', cx: cam.x, cy: cam.y };
+    const mouse = e.pointerType === 'mouse';
+    gesture = { type: 'pending', sx: e.offsetX, sy: e.offsetY, button: e.button, mouse, cx: cam.x, cy: cam.y, t0: performance.now(), hist: [] };
+    // touch: hold still for a moment, then drag = box select
+    if (!mouse && !placing) lpTimer = setTimeout(() => {
+      if (!gesture || gesture.type !== 'pending') return;
+      gesture.type = 'box'; boxDrag = { x0: gesture.sx, y0: gesture.sy, x1: gesture.sx, y1: gesture.sy, long: true };
+      try { navigator.vibrate && navigator.vibrate(12); } catch (err) {}
+      sfx('click');
+    }, LONG_PRESS);
   }
 });
 cv.addEventListener('pointermove', e => {
@@ -1675,25 +1973,32 @@ cv.addEventListener('pointermove', e => {
     const [a, b] = [...pointers.values()];
     const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
     cam.z = gesture.z0 * d / Math.max(20, gesture.d0); clampCam();
-    cam.x = gesture.w0.x - mx / cam.z; cam.y = gesture.w0.y - my / cam.z; clampCam();
+    cam.x = gesture.i0.ix - mx / cam.z; cam.y = gesture.i0.iy - my / cam.z; clampCam();
     return;
   }
   const dx = e.offsetX - gesture.sx, dy = e.offsetY - gesture.sy;
-  if (gesture.type === 'pending' && Math.hypot(dx, dy) > 9) {
-    if (placing && !gesture.mouse) gesture.type = 'pan';
-    else if (gesture.mouse) gesture.type = gesture.button === 0 && !placing ? 'box' : 'pan';
-    else gesture.type = boxMode ? 'box' : 'pan';
+  if (gesture.type === 'pending' && Math.hypot(dx, dy) > (gesture.mouse ? 6 : 10)) {
+    clearTimeout(lpTimer);
+    gesture.type = gesture.mouse && gesture.button === 0 && !placing ? 'box' : 'pan';
     if (gesture.type === 'box') boxDrag = { x0: gesture.sx, y0: gesture.sy, x1: e.offsetX, y1: e.offsetY };
   }
-  if (gesture.type === 'pan') { cam.x = gesture.cx - dx / cam.z; cam.y = gesture.cy - dy / cam.z; clampCam(); }
-  else if (gesture.type === 'box') { boxDrag.x1 = e.offsetX; boxDrag.y1 = e.offsetY; }
+  if (gesture.type === 'pan') {
+    cam.x = gesture.cx - dx / cam.z; cam.y = gesture.cy - dy / cam.z; clampCam();
+    const now = performance.now(); gesture.hist.push([now, e.offsetX, e.offsetY]); while (gesture.hist.length > 2 && now - gesture.hist[0][0] > 90) gesture.hist.shift();
+  } else if (gesture.type === 'box') { boxDrag.x1 = e.offsetX; boxDrag.y1 = e.offsetY; }
 });
 function endPointer(e) {
   if (!pointers.has(e.pointerId)) return;
   pointers.delete(e.pointerId);
   if (!gesture) return;
+  clearTimeout(lpTimer);
   if (gesture.type === 'pending' && e.type === 'pointerup') tap(gesture.sx, gesture.sy, gesture.button);
   else if (gesture.type === 'box' && boxDrag) finishBox();
+  else if (gesture.type === 'pan' && gesture.hist.length > 1 && e.type === 'pointerup') {
+    // fling: keep the camera gliding with the finger's last speed
+    const a = gesture.hist[0], b = gesture.hist[gesture.hist.length - 1], dt = (b[0] - a[0]) / 1000;
+    if (dt > 0.01 && performance.now() - b[0] < 80) { let vx = -(b[1] - a[1]) / dt, vy = -(b[2] - a[2]) / dt; const sp = Math.hypot(vx, vy), cap = 1600; if (sp > cap) { vx *= cap / sp; vy *= cap / sp; } camVel.x = vx / cam.z; camVel.y = vy / cam.z; }
+  }
   if (gesture.type === 'pinch') { if (!pointers.size) gesture = null; return; }
   gesture = null; boxDrag = null;
 }
@@ -1701,9 +2006,9 @@ cv.addEventListener('pointerup', endPointer);
 cv.addEventListener('pointercancel', endPointer);
 cv.addEventListener('wheel', e => {
   e.preventDefault(); if (!G) return;
-  const w = s2w(e.offsetX, e.offsetY);
+  const w = s2i(e.offsetX, e.offsetY);
   cam.z *= Math.exp(-e.deltaY * 0.0015); clampCam();
-  cam.x = w.x - e.offsetX / cam.z; cam.y = w.y - e.offsetY / cam.z; clampCam();
+  cam.x = w.ix - e.offsetX / cam.z; cam.y = w.iy - e.offsetY / cam.z; clampCam();
 }, { passive: false });
 const keys = new Set();
 addEventListener('keydown', e => {
@@ -1716,7 +2021,7 @@ addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 function pick(sx, sy, own) {
   const { ix, iy } = s2i(sx, sy);
   let best = null, bd = 1e9;
-  const tol = Math.max(8, 12 / cam.z);
+  const tol = (lastPointerTouch ? 22 : 10) / cam.z;
   for (const e of G.ents) {
     if (!seen(e) || (own !== undefined && (e.team === 0) !== own)) continue;
     if (e.kind === 'b') {
@@ -1727,7 +2032,7 @@ function pick(sx, sy, own) {
         if (w.x >= e.tx * T && w.x < (e.tx + e.w) * T && w.y >= e.ty * T && w.y < (e.ty + e.h) * T) { if (bd > 40) { best = e; bd = 40; } break; }
       }
     } else {
-      if (e.team !== 0 && !vis[tileOf(e.x, e.y)]) continue;
+      if (e.team !== 0 && !expl[tileOf(e.x, e.y)]) continue;
       const [ux, uy] = P(e.x, e.y, (UH[e.type] || 12) * 0.45);
       const d = Math.hypot(ux - ix, (uy - iy) * 1.2); if (d < e.r + tol && d < bd) { bd = d; best = e; }
     }
@@ -1778,22 +2083,48 @@ function tap(sx, sy, button) {
 }
 function addMark(x, y, c) { marks.push({ x, y, c, t0: performance.now() }); if (marks.length > 8) marks.shift(); }
 function finishBox() {
+  const bw = Math.abs(boxDrag.x1 - boxDrag.x0), bh = Math.abs(boxDrag.y1 - boxDrag.y0);
+  if (boxDrag.long && bw < 12 && bh < 12) {
+    // long press without dragging: on one of your units = pick every unit of that type on screen
+    const own = pick(boxDrag.x0, boxDrag.y0, true);
+    if (own && own.kind === 'u') { selectOnly(G.ents.filter(e => e.team === 0 && e.type === own.type && e.kind === 'u' && onScreen(e))); sfx('click'); }
+    boxDrag = null; return;
+  }
   const a = s2i(Math.min(boxDrag.x0, boxDrag.x1), Math.min(boxDrag.y0, boxDrag.y1)), b = s2i(Math.max(boxDrag.x0, boxDrag.x1), Math.max(boxDrag.y0, boxDrag.y1));
   let got = G.ents.filter(e => { if (e.team !== 0 || e.kind !== 'u') return false; const [ix, iy] = P(e.x, e.y, 6); return ix >= a.ix && ix <= b.ix && iy >= a.iy && iy <= b.iy; });
   if (got.some(u => u.type !== 'harv' && u.type !== 'mcv')) got = got.filter(u => u.type !== 'harv' && u.type !== 'mcv');
-  if (got.length) { selectOnly(got); sfx('click'); }
+  if (got.length) { selectOnly(got); sfx('click'); } else if (boxDrag.long) { deselect(); }
   boxDrag = null;
-  if (boxMode && !gesture?.mouse) { boxMode = false; updateBoxBtn(); }
 }
 function selectOnly(list) { sel = new Set(list); selB = null; refreshSelUI(); }
 function deselect() { sel.clear(); selB = null; refreshSelUI(); }
 const selInfo = document.getElementById('selInfo'), desBtn = document.getElementById('desBtn'), deployBtn = document.getElementById('deployBtn');
+const actBar = document.getElementById('actBar'), stopBtn = document.getElementById('stopBtn'), repairBtn = document.getElementById('repairBtn'), sellBtn = document.getElementById('sellBtn');
 deployBtn.addEventListener('click', () => { const u = [...sel][0]; if (u && u.type === 'mcv') deploy(u); });
+stopBtn.addEventListener('click', () => { for (const u of sel) { u.order = { type: 'idle' }; u.target = null; if (u.type === 'harv') { u.order = { type: 'harvest' }; u.hs = 'seek'; } } sfx('ack'); });
+repairBtn.addEventListener('click', () => { if (selB && selB.team === 0) { setRepair(selB, !selB.repairing); sfx('click'); refreshSelUI(); } });
+let sellArm = 0;
+sellBtn.addEventListener('click', () => {
+  if (!selB || selB.team !== 0) return;
+  if (performance.now() - sellArm < 2500) { sellBuilding(selB); sellArm = 0; deselect(); return; }
+  sellArm = performance.now(); sfx('click'); refreshSelUI();
+});
 function refreshSelUI() {
   for (const e of [...sel]) if (!alive(e)) sel.delete(e);
   const n = sel.size;
-  desBtn.hidden = !n && !selB;
+  const myB = selB && selB.team === 0 && !selB.selling ? selB : null;
+  actBar.hidden = !n && !selB;
   deployBtn.hidden = !(n === 1 && [...sel][0].type === 'mcv');
+  stopBtn.hidden = !n;
+  repairBtn.hidden = sellBtn.hidden = !myB;
+  if (myB) {
+    repairBtn.setAttribute('aria-pressed', String(!!myB.repairing));
+    repairBtn.textContent = myB.repairing ? '停止维修' : (myB.hp < myB.maxhp ? '维修' : '维修（满血）');
+    repairBtn.disabled = !myB.repairing && myB.hp >= myB.maxhp;
+    const armed = performance.now() - sellArm < 2500;
+    sellBtn.textContent = armed ? `确认出售 +$${sellValue(myB)}` : '出售';
+    sellBtn.classList.toggle('warn', armed);
+  }
   if (n) {
     const c = {}; for (const u of sel) c[u.type] = (c[u.type] || 0) + 1;
     selInfo.textContent = Object.entries(c).map(([t, k]) => `${UDEF[t].name}×${k}`).join('  ');
@@ -1803,7 +2134,6 @@ function refreshSelUI() {
     selInfo.hidden = false;
   } else selInfo.hidden = true;
 }
-boxBtn.addEventListener('click', () => { boxMode = !boxMode; updateBoxBtn(); });
 document.getElementById('allBtn').addEventListener('click', () => {
   const army = G.ents.filter(e => e.team === 0 && e.kind === 'u' && e.type !== 'harv' && e.type !== 'mcv');
   selectOnly(army); sfx('click');
@@ -2070,6 +2400,11 @@ function frame(now) {
     if (keys.has('arrowright') || keys.has('d')) cam.x += sp;
     if (keys.has('arrowup') || keys.has('w')) cam.y -= sp;
     if (keys.has('arrowdown') || keys.has('s')) cam.y += sp;
+    if (!gesture && (camVel.x || camVel.y)) {
+      cam.x += camVel.x * dt; cam.y += camVel.y * dt; clampCam();
+      const k = Math.exp(-6 * dt); camVel.x *= k; camVel.y *= k;
+      if (Math.hypot(camVel.x, camVel.y) < 8) camVel.x = camVel.y = 0;
+    }
     clampCam();
     if (G.demo) demoCam(dt);
   }
@@ -2107,6 +2442,9 @@ window.__cf = {
   setDifficulty(d) { difficulty = d; },
 };
 window.__cam = (x, y) => centerOn(x, y);
+window.__zoom = z => { cam.z = z; clampCam(); };
+window.__camPos = () => ({ x: cam.x, y: cam.y });
+window.__sprTime = () => { SPR.clear(); const out = {}; for (const n of ['hq','power','refinery','barracks','factory','turretBase']) { const t = performance.now(); bldSpr(n, 0); out[n] = +(performance.now() - t).toFixed(1); } for (const n of ['tank','turret','harv','mcv','gun']) { const t = performance.now(); for (let d = 0; d < 32; d++) unitSpr(n, 0, d / 32 * Math.PI * 2); out[n + 'x32'] = +(performance.now() - t).toFixed(1); } return out; };
 window.__w2s = (x, y) => { const r = cv.getBoundingClientRect(); const [ix, iy] = P(x, y, 6); return { x: r.left + (ix - cam.x) * cam.z, y: r.top + (iy - cam.y) * cam.z }; };
 })();
 </script>
