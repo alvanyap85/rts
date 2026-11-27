@@ -141,6 +141,7 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
       <button class="fb go" id="deployBtn" hidden>展开</button>
       <button class="fb" id="stopBtn" hidden>停止</button>
       <button class="fb" id="repairBtn" hidden aria-pressed="false">维修</button>
+      <button class="fb" id="packBtn" hidden>收起</button>
       <button class="fb" id="sellBtn" hidden>出售</button>
       <button class="fb" id="desBtn">取消选择</button>
     </div>
@@ -172,7 +173,7 @@ button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
   </div>
   <div class="row"><button class="big" id="startBtn">开始作战</button></div>
   <div class="help">
-    <div><b>选部队：</b>点一下单位；双击选同类；按住地面不放，等圆圈出现后拖动就是框选</div>
+    <div><b>选部队：</b>点一下单位；双击或长按单位选同类；按住地面不放，等圆圈出现后拖动就是框选</div><div><b>展开：</b>双击基地车，或选中后点「展开」</div>
     <div><b>下命令：</b>选中后点地面移动，点敌人攻击，点矿区采矿</div>
     <div><b>看地图：</b>单指拖动平移（可以甩），双指缩放，点右侧小地图跳转</div>
     <div><b>造东西：</b>点右侧图标开始建造，完成后再点一下放到地图上；长按图标取消。点自己的建筑可以维修或出售</div>
@@ -222,16 +223,16 @@ const BDEF = {
 };
 const UDEF = {
   rifle:  { name: '步枪兵',   cat: 'inf', from: 'barracks', cost: 100,  time: 3.5, hp: 125, armor: 'inf',   speed: 34, r: 5,  range: 4.5, sight: 6, weapon: 'rifle' },
-  rocket: { name: '火箭兵',   cat: 'inf', from: 'barracks', cost: 250,  time: 6,   hp: 110, armor: 'inf',   speed: 30, r: 5,  range: 6,   sight: 7, weapon: 'rocket' },
-  tank:   { name: '主战坦克', cat: 'veh', from: 'factory',  cost: 800,  time: 11,  hp: 480, armor: 'heavy', speed: 52, r: 11, range: 5.5, sight: 7, weapon: 'cannon', turn: 3.2 },
-  mcv:    { name: '基地车',   cat: 'veh', from: 'factory',  cost: 3000, time: 25,  hp: 1000, armor: 'heavy', speed: 30, r: 15, range: 0, sight: 6, turn: 2 },
+  rocket: { name: '火箭兵',   cat: 'inf', from: 'barracks', cost: 300,  time: 6.5, hp: 100, armor: 'inf',   speed: 28, r: 5,  range: 6,   sight: 7, weapon: 'rocket' },
+  tank:   { name: '主战坦克', cat: 'veh', from: 'factory',  cost: 800,  time: 11,  hp: 520, armor: 'heavy', speed: 52, r: 11, range: 5.5, sight: 7, weapon: 'cannon', turn: 3.2 },
+  mcv:    { name: '基地车',   deploys: true, cat: 'veh', from: 'factory',  cost: 3000, time: 25,  hp: 1000, armor: 'heavy', speed: 36, r: 15, range: 0, sight: 6, turn: 2 },
   harv:   { name: '采矿车',   cat: 'veh', from: 'factory',  cost: 1200, time: 12,  hp: 900, armor: 'heavy', speed: 40, r: 13, range: 0,   sight: 5, turn: 2.6 },
 };
 // vs = damage multiplier against [infantry, heavy armor, buildings]
 const WDEF = {
-  rifle:     { dmg: 15, rof: 0.8, kind: 'bullet', vs: [1, 0.22, 0.3], snd: 'rifle' },
-  rocket:    { dmg: 52, rof: 2.2, kind: 'rocket', speed: 230, vs: [0.3, 1.1, 0.8], snd: 'rocket', splash: 10 },
-  cannon:    { dmg: 64, rof: 2.0, kind: 'shell', speed: 420, vs: [0.55, 1, 0.85], snd: 'cannon', splash: 14 },
+  rifle:     { dmg: 15, rof: 0.8, kind: 'bullet', vs: [1, 0.12, 0.25], snd: 'rifle' },
+  rocket:    { dmg: 60, rof: 2.3, kind: 'rocket', speed: 230, vs: [0.25, 1.1, 0.55], snd: 'rocket', splash: 10 },
+  cannon:    { dmg: 64, rof: 2.0, kind: 'shell', speed: 420, vs: [0.85, 1, 0.85], snd: 'cannon', splash: 11 },
   turretgun: { dmg: 56, rof: 1.5, kind: 'shell', speed: 480, vs: [0.8, 1, 0.5], snd: 'cannon', splash: 12 },
 };
 const BUILD_LIST = ['power', 'refinery', 'barracks', 'factory', 'turret'];
@@ -488,7 +489,7 @@ function newGame(seed) {
   updateVis(true);
   buildGrid();
   msgBox.textContent = '';
-  if (!G.teams[0].ai) { selectOnly([mcv]); say('选中基地车，点「展开」建立基地'); }
+  if (!G.teams[0].ai) { selectOnly([mcv]); say('双击基地车，展开成建造厂'); }
 }
 
 // ============================================================ entities
@@ -554,10 +555,12 @@ function query(x, y, r, fn) {
   const y0 = clamp((y - r) / CS | 0, 0, CH - 1), y1 = clamp((y + r) / CS | 0, 0, CH - 1);
   for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) for (const e of cells[cy * CW + cx]) fn(e);
 }
-function findEnemy(e, r) {
+const isThreat = x => x.kind === 'u' ? !!UDEF[x.type].weapon : !!BDEF[x.type].weapon;
+function findEnemy(e, r, threatsOnly) {
   let best = null, bd = 1e9; const seen = new Set();
   query(e.x, e.y, r + 48, o => {
     if (o.team === e.team || o.hp <= 0 || seen.has(o.id)) return; seen.add(o.id);
+    if (threatsOnly && !isThreat(o)) return;
     let d = distTo(e, o); if (d > r) return;
     if (o.kind === 'b') d += 40;                  // prefer shooting units over buildings
     if (o.type === 'harv') d += 20;
@@ -639,7 +642,8 @@ function stepProduction(tm, dt) {
     const q = tm.q[cat]; if (!q.length) continue;
     const type = q[0], def = UDEF[type];
     if (!tm.cnt[def.from]) continue;
-    if (advance(tm, tm.qp[cat], def, dt)) {
+    // each extra barracks / war factory speeds its queue up by 60%
+    if (advance(tm, tm.qp[cat], def, dt * (1 + 0.6 * ((tm.cnt[def.from] || 1) - 1)))) {
       if (spawnUnit(tm, type)) { q.shift(); tm.qp[cat] = q.length ? { prog: 0, paid: 0 } : null; }
       else tm.qp[cat].prog = 1;
     }
@@ -743,14 +747,50 @@ function deploySpot(u) {
   for (let y = ty; y < ty + 3; y++) for (let x = tx; x < tx + 3; x++) { const i = y * MW + x; if (terr[i] || bmap[i] >= 0) return null; }
   return [tx, ty];
 }
+const DEPLOY_ANG = Math.PI / 4;     // the MCV turns to face the viewer before it unfolds
+const UNFOLD_T = 1.7, PACK_T = 1.4;
 function deploy(u) {
   const s = deploySpot(u);
   if (!s) { if (u.team === 0 && !G.teams[0].ai) { say('这里无法展开，换个空地', true); sfx('deny'); } return false; }
-  G.byId.delete(u.id); G.ents = G.ents.filter(e => e !== u); sel.delete(u);
-  addBuilding(u.team, 'hq', s[0], s[1]);
-  recount();
-  if (u.team === 0) { sfx('place'); if (!G.teams[0].ai) { say('基地车已展开'); refreshSelUI(); setTab('b'); } }
+  u.order = { type: 'deploy', tx: s[0], ty: s[1] }; u.target = null; u.stuckT = 0;
+  if (u.team === 0 && !G.teams[0].ai) { sfx('ack'); refreshSelUI(); }
   return true;
+}
+function stepDeploy(u, dt) {
+  const o = u.order, cx = (o.tx + 1.5) * T, cy = (o.ty + 1.5) * T, d = Math.hypot(cx - u.x, cy - u.y);
+  if (d > 6) { moveToward(u, cx, cy, dt); return true; }
+  u.x += (cx - u.x) * Math.min(1, dt * 5); u.y += (cy - u.y) * Math.min(1, dt * 5);
+  u.dir = turnTo(u.dir, DEPLOY_ANG, UDEF.mcv.turn * dt);
+  if (Math.abs(angDiff(u.dir, DEPLOY_ANG)) > 0.02 || d > 1) return false;
+  for (let y = o.ty; y < o.ty + 3; y++) for (let x = o.tx; x < o.tx + 3; x++) {
+    const i = y * MW + x;
+    if (terr[i] || bmap[i] >= 0) { u.order = { type: 'idle' }; if (u.team === 0) { say('这里无法展开，换个空地', true); sfx('deny'); } return false; }
+  }
+  const wasSel = sel.has(u);
+  G.byId.delete(u.id); G.ents = G.ents.filter(e => e !== u); sel.delete(u);
+  const b = addBuilding(u.team, 'hq', o.tx, o.ty);
+  b.bu = 1; b.unfold = 0; b.hp = b.maxhp * clamp(u.hp / u.maxhp, 0.05, 1);
+  recount();
+  for (let k = 0; k < 8; k++) puff(b.x + (rnd() - .5) * 70, b.y + (rnd() - .5) * 70, false, 2);
+  if (u.team === 0 || seen(b)) sfx('deploy', b.x, b.y);
+  if (u.team === 0 && !G.teams[0].ai) { say('基地车已展开'); if (wasSel) { selB = b; } refreshSelUI(); setTab('b'); }
+  return false;
+}
+function packUp(b) {
+  if (b.type !== 'hq' || b.unfold !== undefined || b.pack !== undefined || b.selling) return;
+  const tm = G.teams[b.team];
+  if (tm.bq) cancelBuilding(tm);
+  b.pack = 0; b.repairing = false;
+  if (b.team === 0) sfx('deploy', b.x, b.y);
+}
+function finishPack(b) {
+  for (const i of b.tiles) bmap[i] = -1;
+  G.byId.delete(b.id); G.ents = G.ents.filter(e => e !== b);
+  fieldVer++;
+  const u = addUnit(b.team, 'mcv', b.x, b.y);
+  u.dir = u.tdir = DEPLOY_ANG; u.hp = u.maxhp * clamp(b.hp / b.maxhp, 0.05, 1);
+  recount();
+  if (selB === b) { selB = null; if (b.team === 0) selectOnly([u]); }
 }
 
 // ============================================================ orders
@@ -796,16 +836,19 @@ function step() {
   if (G.aiT <= 0) { G.aiT = 0.5; for (const tm of G.teams) if (tm.ai) runAI(tm); }
   for (const e of G.ents) { if (e.hp <= 0) continue; if (e.kind === 'u') stepUnit(e, dt); else stepBuilding(e, dt); }
   separate(dt);
+  crushInfantry();
   stepProjectiles(dt);
   stepFx(dt);
   G.oreT -= dt;
-  if (G.oreT <= 0) { G.oreT = 6; for (let i = 0; i < N; i++) if (ore[i] && ore[i] < oreMax[i]) ore[i] = Math.min(oreMax[i], ore[i] + 15); }
+  if (G.oreT <= 0) { G.oreT = 6; for (let i = 0; i < N; i++) if (ore[i] < oreMax[i] && bmap[i] < 0) ore[i] = Math.min(oreMax[i], ore[i] + (ore[i] ? 15 : 6)); }  // mined-out ground grows back slowly
   G.visT -= dt; if (G.visT <= 0) { G.visT = 0.2; updateVis(); }
   G.endT -= dt; if (G.endT <= 0) { G.endT = 1; checkEnd(); }
 }
 
 function stepBuilding(b, dt) {
   if (b.selling) { b.bu -= dt / 0.9; if (b.bu <= 0) finishSell(b); return; }
+  if (b.unfold !== undefined) { b.unfold += dt / UNFOLD_T; if (b.unfold >= 1) delete b.unfold; return; }
+  if (b.pack !== undefined) { b.pack += dt / PACK_T; if (b.pack >= 1) finishPack(b); return; }
   if (b.bu < 1) b.bu = Math.min(1, b.bu + dt / 1.1);
   stepRepair(b, dt);
   const tm = G.teams[b.team];
@@ -837,15 +880,18 @@ function stepUnit(u, dt) {
   let moving = false;
 
   if (u.type === 'harv') { moving = stepHarvester(u, dt); trackStuck(u, dt, moving); return; }
+  if (o.type === 'deploy') { moving = stepDeploy(u, dt); trackStuck(u, dt, moving); return; }
 
   if (o.type === 'attack') {
-    if (!alive(o.target) || (o.target.team !== 0 && u.team === 0 && !seen(o.target))) { u.order = { type: 'idle' }; u.target = null; }
-    else { u.target = o.target; moving = engage(u, dt, false); }
+    if (G.teams[u.team].ai && !isThreat(o.target) && (u.scanT -= dt) <= 0) { u.scanT = 0.5; const t2 = findEnemy(u, d.sight * T, true); if (t2) u.order = { type: 'attack', target: t2 }; }
+    if (!alive(u.order.target) || (u.order.target.team !== 0 && u.team === 0 && !seen(u.order.target))) { u.order = { type: 'idle' }; u.target = null; }
+    else { u.target = u.order.target; moving = engage(u, dt, false); }
   } else if (o.type === 'move' || o.type === 'amove') {
     if (o.type === 'amove') {
       if (!alive(u.target) || distTo(u, u.target) > d.sight * T * 1.4) u.target = null;
       u.scanT -= dt;
       if (!u.target && u.scanT <= 0) { u.scanT = 0.3; u.target = findEnemy(u, d.sight * T); }
+      else if (u.target && !isThreat(u.target) && u.scanT <= 0) { u.scanT = 0.5; u.target = findEnemy(u, d.sight * T, true) || u.target; }
     }
     if (o.type === 'amove' && u.target) moving = engage(u, dt, true);
     else {
@@ -862,6 +908,7 @@ function stepUnit(u, dt) {
     if (!alive(u.target)) u.target = null;
     u.scanT -= dt;
     if (w && !u.target && u.scanT <= 0) { u.scanT = 0.35; u.target = findEnemy(u, d.sight * T); }
+    else if (w && u.target && !isThreat(u.target) && u.scanT <= 0) { u.scanT = 0.5; u.target = findEnemy(u, d.sight * T, true) || u.target; }
     if (u.target) {
       if (Math.hypot(u.x - o.gx, u.y - o.gy) > 7 * T && distTo(u, u.target) > d.range * T) {
         u.target = null; orderMove([u], o.gx, o.gy, 'move');
@@ -887,6 +934,9 @@ function opportunistic(u, dt, w) {
 function engage(u, dt, auto) {
   const d = UDEF[u.type], w = WDEF[d.weapon], t = u.target;
   const dist = distTo(u, t);
+  if (G.teams[u.team].ai && u.type === 'tank' && isInf(t) && dist < 3 * T && clearLine(u.x, u.y, t.x, t.y)) {
+    aimFire(u, dt, w); moveToward(u, t.x, t.y, dt); return true;
+  }
   if (dist <= d.range * T) { aimFire(u, dt, w); return false; }
   if (d.cat === 'veh') u.tdir = turnTo(u.tdir, Math.atan2(t.y - u.y, t.x - u.x), 3 * dt);
   if (dist < 6 * T && clearLine(u.x, u.y, t.x, t.y)) { moveToward(u, t.x, t.y, dt); return true; }
@@ -955,12 +1005,26 @@ function tryMove(u, mx, my) {
   if (isWalk(tileOf(u.x, ny))) { u.y = ny; return true; }
   return false;
 }
+const isCrusher = u => u.kind === 'u' && UDEF[u.type].cat === 'veh';
+const isInf = u => u.kind === 'u' && UDEF[u.type].cat === 'inf';
+function crushInfantry() {
+  for (const v of G.ents) {
+    if (!isCrusher(v) || v.hp <= 0) continue;
+    const moved = v.walk - (v.walk0 || 0); v.walk0 = v.walk;
+    if (moved <= 0.05) continue;
+    query(v.x, v.y, v.r + 10, o => {
+      if (!isInf(o) || o.team === v.team || o.hp <= 0) return;
+      if (Math.hypot(o.x - v.x, o.y - v.y) < v.r * 0.8 + 2) { o.crushed = true; kill(o, v); }
+    });
+  }
+}
 function separate(dt) {
   for (const c of cells) {
     for (let i = 0; i < c.length; i++) {
       const a = c[i]; if (a.kind !== 'u') continue;
       query(a.x, a.y, 30, b => {
         if (b === a || b.kind !== 'u' || b.id < a.id) return;
+        if (a.team !== b.team && ((isCrusher(a) && isInf(b)) || (isCrusher(b) && isInf(a)))) return;   // tanks drive over enemy infantry
         const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy) || 0.01;
         const minD = (a.r + b.r) * (a.r + b.r < 12 ? 1.05 : 0.85); if (d >= minD) return;
         const push = Math.min(minD - d, 4) * 0.5;
@@ -1085,7 +1149,7 @@ function stepProjectiles(dt) {
       boom(p.tx, p.ty, p.k === 'shell' ? 0.7 : 0.55);
       const sp = p.w.splash || 0;
       if (alive(p.target) && (p.target.kind === 'b' ? bldRectDist(p.target, p.tx, p.ty) < 6 : Math.hypot(p.target.x - p.tx, p.target.y - p.ty) < p.target.r + sp)) damage(p.target, p.w.dmg, p.w, p.src);
-      if (sp) query(p.tx, p.ty, sp + 16, e => { if (e !== p.target && e.team !== p.team && e.kind === 'u' && e.hp > 0 && Math.hypot(e.x - p.tx, e.y - p.ty) < sp + e.r * .5) damage(e, p.w.dmg * 0.4, p.w, p.src); });
+      if (sp) query(p.tx, p.ty, sp + 16, e => { if (e !== p.target && e.team !== p.team && e.kind === 'u' && e.hp > 0 && Math.hypot(e.x - p.tx, e.y - p.ty) < sp + e.r * .5) damage(e, p.w.dmg * 0.3, p.w, p.src); });
     } else { p.x += Math.cos(p.a) * stepL; p.y += Math.sin(p.a) * stepL; }
   }
   G.proj = G.proj.filter(p => !p.dead);
@@ -1096,9 +1160,20 @@ function damage(e, dmg, w, src) {
   e.hp -= dmg * w.vs[arm];
   e.dmgT = 0.15;
   if (e.team === 0 && e.kind === 'b' && G.t - G.teams[0].lastWarn > 20) { G.teams[0].lastWarn = G.t; say('我方基地遭到攻击', true); sfx('alert'); }
-  if (e.kind === 'u' && alive(src) && !e.target && UDEF[e.type].weapon && e.order.type === 'idle') e.target = src;
+  if (e.kind === 'u' && UDEF[e.type].weapon && alive(src) && src.team !== e.team) retaliate(e, src);
   if (alive(src) && G.teams[e.team].ai) G.teams[e.team].ai_.help = src;
   if (e.hp <= 0) kill(e, src);
+}
+// a unit that is hit turns on its attacker, unless it was told to move, or (player only) told to attack something
+function retaliate(u, src) {
+  const tm = G.teams[u.team], ot = u.order.type;
+  if (ot === 'move' || ot === 'deploy') return;
+  if (ot === 'attack' && !tm.ai) return;
+  if (G.t < (u.retT || 0)) return;
+  const cur = u.target;
+  if (alive(cur) && isThreat(cur) && distTo(u, cur) <= UDEF[u.type].range * T) return;
+  u.target = src; u.retT = G.t + 1.5;
+  if (ot === 'attack') u.order = { type: 'attack', target: src };
 }
 function kill(e, src) {
   e.hp = 0;
@@ -1121,8 +1196,8 @@ function kill(e, src) {
       boom(e.x, e.y, 1.3); G.decals.push({ k: 'scorch', x: e.x, y: e.y, r: 16 });
       if (seen(e)) sfx('boom', e.x, e.y);
     } else {
-      G.fx.push({ k: 'body', x: e.x, y: e.y, z: 0, t: 0, life: 2.5, team: e.team, a: e.dir });
-      if (seen(e)) sfx('die', e.x, e.y);
+      if (e.crushed) { G.decals.push({ k: 'squash', x: e.x, y: e.y, team: e.team, a: rnd() * 6 }); if (seen(e)) sfx('squish', e.x, e.y); }
+      else { G.fx.push({ k: 'body', x: e.x, y: e.y, z: 0, t: 0, life: 2.5, team: e.team, a: e.dir }); if (seen(e)) sfx('die', e.x, e.y); }
     }
     tm.cnt[e.type] = (tm.cnt[e.type] || 1) - 1;
   }
@@ -1177,6 +1252,8 @@ function runAI(tm) {
       if (tm.powerP - tm.powerU < 30) want = 'power';
       else if ((tm.cnt.turret || 0) < 6 && tm.credits > 1500) want = 'turret';
       else if ((tm.cnt.refinery || 0) < 3 && tm.credits > 2500) want = 'refinery';
+      else if ((tm.cnt.factory || 0) < 2 && tm.credits > 3000) want = 'factory';
+      else if ((tm.cnt.barracks || 0) < 2 && tm.credits > 2000) want = 'barracks';
     }
     if (want && want !== 'power' && netAfter(want) < 0) want = 'power';
     if (want && startBuilding(tm, want) && s.step < AI_ORDER.length && want === AI_ORDER[s.step]) s.step++;
@@ -1211,7 +1288,8 @@ function runAI(tm) {
   // --- attack waves
   for (const id of [...s.waveIds]) if (!G.byId.has(id)) s.waveIds.delete(id);
   const home = army.filter(u => !s.waveIds.has(u.id));
-  if (G.t > s.nextAttack && home.length >= s.wave) {
+  // attack when the wave is big enough, or with whatever is at home if it has waited too long
+  if (G.t > s.nextAttack && (home.length >= s.wave || (G.t > s.nextAttack + 100 && home.length >= 3))) {
     for (const u of home) s.waveIds.add(u.id);
     s.wave = Math.min(s.wave + DIFF[difficulty].waveGrow, DIFF[difficulty].waveMax);
     s.nextAttack = G.t + DIFF[difficulty].gap;
@@ -1620,6 +1698,12 @@ function render() {
   ctx.save(); groundOn(ctx);
   ctx.drawImage(terrC, 0, 0);
   for (const d of G.decals) {
+    if (d.k === 'squash') {
+      ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.a);
+      ctx.fillStyle = 'rgba(105,22,16,.55)'; ctx.beginPath(); ctx.ellipse(0, 0, 7, 4.5, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = TEAM[d.team].dark; ctx.fillRect(-4, -1.6, 8, 3.2);
+      ctx.restore(); continue;
+    }
     if (d.k === 'scorch') { const g = ctx.createRadialGradient(d.x, d.y, 1, d.x, d.y, d.r); g.addColorStop(0, 'rgba(10,8,6,.55)'); g.addColorStop(1, 'rgba(10,8,6,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 7); ctx.fill(); }
     else drawRubble(d);
   }
@@ -1764,7 +1848,18 @@ function drawUnit(c, u, tc) {
 function roundRect(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
 
 // ---------- buildings
+function drawUnfold(c, b, p) {
+  // the MCV lifts, then the yard grows out of it while the truck fades into it
+  const [sx, sy] = P(b.x, b.y), team = b.team;
+  const q = clamp((p - 0.18) / 0.82, 0, 1), c1 = 1.6;
+  const s = Math.max(0.28, 0.28 + 0.72 * (1 + (c1 + 1) * Math.pow(q - 1, 3) + c1 * Math.pow(q - 1, 2)));
+  const ba = clamp((p - 0.12) / 0.25, 0, 1), ma = 1 - clamp((p - 0.3) / 0.35, 0, 1);
+  if (ba > 0) { c.save(); c.globalAlpha *= ba; c.translate(sx, sy); c.scale(s, s); c.translate(-sx, -sy); drawSprite(c, bldSpr('hq', team), b.tx * T, b.ty * T, 0); c.restore(); }
+  if (ma > 0) { c.save(); c.globalAlpha *= ma; drawSprite(c, unitSpr('mcv', team, DEPLOY_ANG), b.x, b.y, Math.sin(clamp(p / 0.3, 0, 1) * Math.PI) * 4); c.restore(); }
+}
 function drawBuilding(c, b, tc, ghost) {
+  if (!ghost && b.unfold !== undefined) { drawUnfold(c, b, b.unfold); return; }
+  if (!ghost && b.pack !== undefined) { drawUnfold(c, b, 1 - b.pack); return; }
   const d = BDEF[b.type], x0 = b.tx * T, y0 = b.ty * T, x1 = x0 + d.w * T, y1 = y0 + d.h * T;
   const team = b.team || 0, fl = !ghost && b.dmgT > 0.08, t = G ? G.t : 0;
   c.save();
@@ -2021,7 +2116,7 @@ addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 function pick(sx, sy, own) {
   const { ix, iy } = s2i(sx, sy);
   let best = null, bd = 1e9;
-  const tol = (lastPointerTouch ? 22 : 10) / cam.z;
+  const tol = (lastPointerTouch ? 12 : 6) / cam.z;
   for (const e of G.ents) {
     if (!seen(e) || (own !== undefined && (e.team === 0) !== own)) continue;
     if (e.kind === 'b') {
@@ -2057,9 +2152,10 @@ function tap(sx, sy, button) {
   }
   if (own) {
     const now = performance.now();
-    if (own.type === 'mcv' && sel.size === 1 && sel.has(own)) { deploy(own); return; }
     if (own.kind === 'u') {
-      if (lastTap && lastTap.id === own.id && now - lastTap.t < 380) {
+      if (lastTap && lastTap.id === own.id && now - lastTap.t < 380 && UDEF[own.type].deploys) {
+        selectOnly([own]); deploy(own); lastTap = null; return;
+      } else if (lastTap && lastTap.id === own.id && now - lastTap.t < 380) {
         selectOnly(G.ents.filter(e => e.team === 0 && e.type === own.type && e.kind === 'u' && onScreen(e)));
       } else selectOnly([own]);
       lastTap = { id: own.id, t: now };
@@ -2103,6 +2199,8 @@ const actBar = document.getElementById('actBar'), stopBtn = document.getElementB
 deployBtn.addEventListener('click', () => { const u = [...sel][0]; if (u && u.type === 'mcv') deploy(u); });
 stopBtn.addEventListener('click', () => { for (const u of sel) { u.order = { type: 'idle' }; u.target = null; if (u.type === 'harv') { u.order = { type: 'harvest' }; u.hs = 'seek'; } } sfx('ack'); });
 repairBtn.addEventListener('click', () => { if (selB && selB.team === 0) { setRepair(selB, !selB.repairing); sfx('click'); refreshSelUI(); } });
+const packBtn = document.getElementById('packBtn');
+packBtn.addEventListener('click', () => { if (selB && selB.team === 0) { packUp(selB); refreshSelUI(); } });
 let sellArm = 0;
 sellBtn.addEventListener('click', () => {
   if (!selB || selB.team !== 0) return;
@@ -2112,9 +2210,10 @@ sellBtn.addEventListener('click', () => {
 function refreshSelUI() {
   for (const e of [...sel]) if (!alive(e)) sel.delete(e);
   const n = sel.size;
-  const myB = selB && selB.team === 0 && !selB.selling ? selB : null;
+  const myB = selB && selB.team === 0 && !selB.selling && selB.unfold === undefined && selB.pack === undefined ? selB : null;
+  packBtn.hidden = !(myB && myB.type === 'hq');
   actBar.hidden = !n && !selB;
-  deployBtn.hidden = !(n === 1 && [...sel][0].type === 'mcv');
+  deployBtn.hidden = !(n === 1 && [...sel][0].type === 'mcv' && [...sel][0].order.type !== 'deploy');
   stopBtn.hidden = !n;
   repairBtn.hidden = sellBtn.hidden = !myB;
   if (myB) {
@@ -2342,6 +2441,8 @@ function sfx(name, x, y) {
     case 'ready': tone(0.12, 'triangle', 660, 660, 0.2); tone(0.18, 'triangle', 990, 990, 0.2, 0.12); break;
     case 'unit': tone(0.08, 'triangle', 520, 520, 0.12); tone(0.1, 'triangle', 780, 780, 0.12, 0.08); break;
     case 'place': noise(0.25, 'lowpass', 500, 80, 0.6); tone(0.2, 'sine', 110, 50, 0.4); break;
+    case 'deploy': for (let k = 0; k < 5; k++) { tone(0.09, 'square', 150 - k * 8, 110, 0.07, k * 0.24); } noise(0.5, 'lowpass', 600, 120, 0.3); break;
+    case 'squish': noise(0.16, 'lowpass', 500, 150, 0.45); tone(0.08, 'sine', 120, 60, 0.3); break;
     case 'alert': for (let k = 0; k < 3; k++) tone(0.12, 'sawtooth', 880, 620, 0.09, k * 0.18); break;
   }
 }
@@ -2444,6 +2545,14 @@ window.__cf = {
 window.__cam = (x, y) => centerOn(x, y);
 window.__zoom = z => { cam.z = z; clampCam(); };
 window.__camPos = () => ({ x: cam.x, y: cam.y });
+window.__clearBmap = () => { bmap.fill(-1); fieldVer++; recount(); };
+window.__addUnit = (team, type, x, y) => addUnit(team, type, x, y);
+window.__cost = type => (UDEF[type] || BDEF[type]).cost;
+window.__amove = (u, x, y) => orderMove([u], x, y, 'amove');
+window.__move = (u, x, y) => orderMove([u], x, y, 'move');
+window.__attack = (u, t) => orderAttack([u], t);
+window.__deploy = u => deploy(u);
+window.__addBuilding = (team, type, tx, ty) => { const b = addBuilding(team, type, tx, ty); b.bu = 1; recount(); return b; };
 window.__sprTime = () => { SPR.clear(); const out = {}; for (const n of ['hq','power','refinery','barracks','factory','turretBase']) { const t = performance.now(); bldSpr(n, 0); out[n] = +(performance.now() - t).toFixed(1); } for (const n of ['tank','turret','harv','mcv','gun']) { const t = performance.now(); for (let d = 0; d < 32; d++) unitSpr(n, 0, d / 32 * Math.PI * 2); out[n + 'x32'] = +(performance.now() - t).toFixed(1); } return out; };
 window.__w2s = (x, y) => { const r = cv.getBoundingClientRect(); const [ix, iy] = P(x, y, 6); return { x: r.left + (ix - cam.x) * cam.z, y: r.top + (iy - cam.y) * cam.z }; };
 })();

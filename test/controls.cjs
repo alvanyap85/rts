@@ -8,6 +8,7 @@ const path = require('path');
   await pg.goto('file://' + path.join(__dirname, 'page.html'));
   await pg.tap('#startBtn');
   await pg.tap('#deployBtn');
+  await pg.evaluate(() => __cf.fast(30 * 4));
   await pg.evaluate(() => { const G = __cf.G; G.teams[0].ai = true; __cf.fast(30 * 150); G.teams[0].ai = false; for (const e of G.ents) if (e.team === 0 && e.kind === 'u' && e.type !== 'harv') e.order = { type: 'idle' }; });
   // synthetic touch pointer events on the map canvas
   const touch = (type, x, y) => pg.evaluate(([type, x, y]) => {

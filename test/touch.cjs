@@ -11,8 +11,13 @@ const path = require('path');
   await pg.tap('#startBtn');
   await pg.waitForTimeout(300);
   const st = () => pg.evaluate(() => { const G = __cf.G, t = G.teams[0]; return { cr: t.credits | 0, bq: t.bq && { type: t.bq.type, prog: +t.bq.prog.toFixed(2), ready: t.bq.ready }, power: t.cnt.power || 0 }; });
-  console.log('deploy btn visible', await pg.isVisible('#deployBtn'));
-  await pg.tap('#deployBtn');
+  // double-tap the MCV to deploy it
+  const mp = await pg.evaluate(() => { const u = __cf.G.ents.find(e => e.type === 'mcv' && e.team === 0); return __w2s(u.x, u.y); });
+  await pg.touchscreen.tap(mp.x, mp.y); await pg.waitForTimeout(120); await pg.touchscreen.tap(mp.x, mp.y);
+  console.log('after double-tap, MCV order:', await pg.evaluate(() => { const u = __cf.G.ents.find(e => e.type === 'mcv' && e.team === 0); return u ? u.order.type : 'gone'; }));
+  await pg.evaluate(() => __cf.fast(30 * 1.2));
+  await pg.screenshot({ path: path.join(__dirname, 'unfold.png') });
+  await pg.evaluate(() => __cf.fast(30 * 3));
   await pg.waitForTimeout(100);
   console.log('after deploy', await pg.evaluate(() => __cf.G.teams[0].cnt), await pg.evaluate(() => document.getElementById('msgs').textContent));
   await pg.tap('.bb[aria-label="发电厂"]');
